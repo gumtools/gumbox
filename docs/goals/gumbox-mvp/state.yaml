@@ -1,0 +1,90 @@
+goal:
+  slug: gumbox-mvp
+  title: "Gumbox MVP Implementation"
+  status: active
+  mode: specific
+  oracle: "pnpm test green with spec-behavior tests against a real Vite pipeline; final Judge spec-conformance audit"
+agents:
+  scout: installed
+  judge: installed
+  worker: installed
+tasks:
+  - id: T001
+    type: scout
+    assignee: Scout
+    status: active
+    objective: "Map all five spec files (cli, box-authoring, runtime-routes, scenarios-and-receipts, product-direction) into a concrete required-behavior inventory for the MVP wedge."
+    inputs:
+      - specs/README.md
+      - specs/product-direction.md
+      - specs/cli.md
+      - specs/box-authoring.md
+      - specs/runtime-routes.md
+      - specs/scenarios-and-receipts.md
+    expected_output:
+      - "Required public API surface"
+      - "Required CLI behavior"
+      - "Required receipt shape"
+      - "MVP-vs-later boundary as stated by the specs"
+    receipt:
+      result: done
+      note: notes/T001-spec-inventory.md
+      summary: "Specs mandate box() authoring with six-key context (environment, browser, project, pipeline, expect, receipt), environment.<name> from resolved Vite environments with recorded browser alias, namespaced expect surfaces, 8 MVP CLI commands, /__gumbox dev/preview middleware, durable receipts under .gumbox/receipts with EnvironmentEditOutcome model. Current code is a no-op plugin shell (~0% implemented)."
+      contradictions:
+        - "MVP scope: box-authoring.md 'first HMR/config receipt MVP' vs cli.md's eight MVP commands"
+        - "Fixtures: manual registration acceptable (product-direction) vs *.box.ts discovery as happy path (scenarios-and-receipts)"
+      ambiguity_for_judge:
+        - "CLI exit codes unspecified; receipt on-disk format unspecified; raw browser access in MVP undecided"
+  - id: T002
+    type: scout
+    assignee: Scout
+    status: queued
+    objective: "Inventory /Users/jacksm5pro/dev/open-source/qwik-bundler/scripts/ for the smoke-script patterns gumbox must replace; extract 2-4 canonical fixture scenarios."
+    inputs:
+      - /Users/jacksm5pro/dev/open-source/qwik-bundler/scripts/
+    expected_output:
+      - "Per-script summary of what it starts, mutates, asserts, and leaves behind"
+      - "2-4 canonical scenarios expressed in gumbox terms (state setup -> environment -> evidence -> receipt)"
+    receipt:
+      result: done
+      note: notes/T002-qwik-bundler-scripts.md
+      summary: "13 scripts inventoried. Only shared helper is a mkdir-mutex lock; server boot, mutate/restore, polling, Playwright wiring copy-pasted ~7x. Three families: live-edit HMR (mutate fixture then finally-restore), dev-server fetch/browser checks, artifact scans assuming prior builds. Four canonical gumbox scenarios extracted: client HMR edit, SSR HMR with state preservation, build artifact scan, multi-environment workerd dev."
+  - id: T003
+    type: judge
+    assignee: Judge
+    status: active
+    objective: "From T001+T002 receipts, choose the first largest safe Worker slice and define its allowed_files, verify commands, and stop_if."
+    expected_output:
+      - "Decision"
+      - "Exact Worker objective"
+      - "allowed_files"
+      - "verify"
+      - "stop_if"
+    receipt: null
+  - id: T004
+    type: worker
+    assignee: Worker
+    status: queued
+    objective: "Execute the first implementation slice selected by Judge."
+    allowed_files: []
+    verify: []
+    stop_if:
+      - "Need files outside allowed_files."
+      - "Behavior is ambiguous against the specs."
+      - "Verification fails twice."
+    receipt: null
+  - id: T999
+    type: judge
+    assignee: Judge
+    status: queued
+    objective: "Audit whether the implemented tranche satisfies the original outcome: gumbox follows the specs and can express at least one canonical qwik-bundler script scenario end-to-end with receipts, verified by pnpm test."
+    inputs:
+      - "All done task receipts"
+      - "Last verification"
+      - "Current dirty diff"
+    expected_output:
+      - "complete | not_complete"
+      - "full_outcome_complete: true | false"
+      - "missing evidence"
+      - "next task if not complete"
+    receipt: null

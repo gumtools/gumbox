@@ -1,0 +1,40 @@
+{
+	"name": "@gumbox/vite",
+	"version": "0.0.0",
+	"files": [
+		"dist"
+	],
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.mts",
+			"default": "./dist/index.mjs"
+		},
+		"./package.json": "./package.json"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"scripts": {
+		"build": "vp pack",
+		"prepublishOnly": "pnpm run build",
+		"test": "vp test",
+		"test:watch": "vp test watch",
+		"check": "vp check",
+		"prepare": "vp config"
+	},
+	"devDependencies": {
+		"@types/node": "24.12.2",
+		"typescript": "5.9.3",
+		"vite": "8.0.16",
+		"vite-plus": "0.1.20",
+		"vitest": "4.1.5"
+	},
+	"peerDependencies": {
+		"vite": "8.0.16"
+	},
+	"engines": {
+		"node": ">=22"
+	},
+	"packageManager": "pnpm@10.33.2"
+}
