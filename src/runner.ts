@@ -192,7 +192,9 @@ async function runSingleBox(args: {
 				state.ws = await connectHotWebSocket({
 					serverUrl: runtime.serverUrl,
 					token: server.config.webSocketToken,
-					root,
+					// The resolved root, not the runner root: a box may overlay
+					// the dev root to a project subdirectory.
+					root: server.config.root,
 					store,
 				});
 				recorder.timeline('hot channel websocket connected', { url: runtime.serverUrl });

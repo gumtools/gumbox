@@ -1,4 +1,4 @@
-import { getPageDriver } from './browser.ts';
+import { getPageDriver, syncTrackedEvents, trackedEventCountExpression } from './browser.ts';
 import type { PageHandle } from './browser.ts';
 import type { EvidenceStore, HotUpdateHookEvidence } from './evidence.ts';
 import { classifyEditOutcome, editTouchesFile, GumboxTimeoutError } from './evidence.ts';
@@ -163,6 +163,56 @@ export function createExpectApi(options: {
 					);
 				}
 				passAssertion('hotUpdate', name, change);
+			},
+			customPayload: async (
+				change,
+				eventName,
+				waitOptions?: ExpectWaitOptions,
+			): Promise<void> => {
+				const timeoutMs = waitOptions?.timeoutMs ?? defaultTimeoutMs;
+				try {
+					await store.waitUntil(
+						`environment '${name}' to broadcast custom hot payload '${eventName}' for ${change.file}`,
+						() =>
+							store.events.find(
+								(event) =>
+									event.kind === 'hot-payload' &&
+									event.environment === name &&
+									event.source === 'channel' &&
+									event.payload.type === 'custom' &&
+									event.payload.event === eventName &&
+									event.seq > change.seq,
+							),
+						timeoutMs,
+					);
+				} catch {
+					const seenEvents = [
+						...new Set(
+							store.events
+								.filter(
+									(event) =>
+										event.kind === 'hot-payload' &&
+										event.environment === name &&
+										event.payload.type === 'custom' &&
+										event.seq > change.seq,
+								)
+								.map((event) =>
+									event.kind === 'hot-payload' ? String(event.payload.event) : '',
+								),
+						),
+					];
+					const seen =
+						seenEvents.length === 0
+							? ''
+							: ` Custom payloads observed instead: ${seenEvents.join(', ')}.`;
+					failAssertion(
+						'customPayload',
+						name,
+						change,
+						`expected environment '${name}' to broadcast custom hot payload '${eventName}' after editing ${change.file}, but none arrived within ${timeoutMs}ms.${seen}`,
+					);
+				}
+				passAssertion('customPayload', name, change);
 			},
 			noFullReload: async (change, waitOptions?: ExpectWaitOptions): Promise<void> => {
 				const timeoutMs = waitOptions?.timeoutMs ?? defaultTimeoutMs;
@@ -407,6 +457,50 @@ export function createExpectApi(options: {
 					return `expected '${selector}' to match computed styles ${JSON.stringify(styles)}, but the computed values were ${JSON.stringify(actual)}`;
 				},
 			});
+		},
+		event: async (page, eventName, options): Promise<void> => {
+			const driver = getPageDriver(page, 'expect.page.event');
+			const atLeast = options?.atLeast ?? 1;
+			const timeoutMs = options?.timeoutMs ?? defaultTimeoutMs;
+			if (driver.record.trackedEvents[eventName] === undefined) {
+				failAssertion(
+					'page.event',
+					driver.record.environment,
+					null,
+					`expect.page.event('${eventName}') has no tracking data: call page.trackEvents(${JSON.stringify(eventName)}) before the action that fires it.`,
+				);
+			}
+			try {
+				await driver.page.waitForExpression(
+					`${trackedEventCountExpression(eventName)} >= ${atLeast}`,
+					timeoutMs,
+				);
+			} catch {
+				await syncTrackedEvents(driver.page, driver.record);
+				const observedCount = driver.record.trackedEvents[eventName]?.length ?? 0;
+				failAssertion(
+					'page.event',
+					driver.record.environment,
+					null,
+					`expected page ${page.url} to observe at least ${atLeast} '${eventName}' event(s), but saw ${observedCount} within ${timeoutMs}ms.`,
+				);
+			}
+			await syncTrackedEvents(driver.page, driver.record);
+			passAssertion('page.event', driver.record.environment, null);
+		},
+		noNavigations: async (page): Promise<void> => {
+			const driver = getPageDriver(page, 'expect.page.noNavigations');
+			const navigations = driver.record.navigations;
+			if (navigations.length > 0) {
+				const urls = navigations.map((navigation) => navigation.url).join(', ');
+				failAssertion(
+					'page.noNavigations',
+					driver.record.environment,
+					null,
+					`expected page ${page.url} to stay on its initial document, but observed ${navigations.length} navigation(s): ${urls}.`,
+				);
+			}
+			passAssertion('page.noNavigations', driver.record.environment, null);
 		},
 		cleanConsole: async (page): Promise<void> => {
 			const driver = getPageDriver(page, 'expect.page.cleanConsole');

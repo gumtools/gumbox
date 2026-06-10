@@ -44,7 +44,12 @@ type ReceiptBox = {
 		editId: string;
 		environments: Record<
 			string,
-			{ update: boolean; fullReload: boolean; invalidated: unknown[] }
+			{
+				update: boolean;
+				fullReload: boolean;
+				invalidated: unknown[];
+				customPayloads: Array<{ event: string; data?: unknown }>;
+			}
 		>;
 	}>;
 	assertions: Array<{ name: string; status: string; environment: string | null }>;
@@ -108,6 +113,7 @@ describe('gumbox runtime', () => {
 				'batch edit touches multiple files',
 				'client edit stays out of the ssr graph',
 				'create, remove, and copy files',
+				'custom hot payload replaces the vite update protocol',
 				'env file edit reloads the dev server',
 				'intentionally failing box',
 				'message updates without reload',
@@ -197,6 +203,87 @@ describe('gumbox runtime', () => {
 				path.join(root, 'src', 'message.ts'),
 			);
 			expect(restoredFile).toContain("'before edit'");
+		},
+		TEST_TIMEOUT_MS,
+	);
+
+	test(
+		'custom hot payloads (framework HMR protocols) become edit outcome evidence',
+		async () => {
+			const root = await createFixtureProject();
+			const boxes = await selectBoxes(
+				root,
+				'custom hot payload replaces the vite update protocol',
+			);
+			const result = await runBoxes({ root, boxes, fileSystem });
+
+			expect(result.status, result.boxes[0]?.error?.message).toBe('passed');
+
+			const receipt = JSON.parse(
+				await fileSystem.readTextFile(result.receiptPath),
+			) as ReceiptJson;
+			const boxReceipt = receipt.boxes[0]!;
+
+			// The framework suppressed Vite's update payload; the custom payload
+			// is the HMR evidence and must land in the normalized outcome.
+			const clientOutcome = boxReceipt.editOutcomes[0]!.environments['client']!;
+			expect(clientOutcome.update).toBe(false);
+			expect(clientOutcome.fullReload).toBe(false);
+			expect(clientOutcome.invalidated.length).toBeGreaterThan(0);
+			expect(clientOutcome.customPayloads.length).toBeGreaterThanOrEqual(1);
+			expect(clientOutcome.customPayloads[0]!.event).toBe('fixture:hmr');
+			expect(clientOutcome.customPayloads[0]!.data).toMatchObject({});
+
+			expect(
+				boxReceipt.assertions.some(
+					(entry) => entry.name === 'customPayload' && entry.status === 'passed',
+				),
+			).toBe(true);
+			expect(
+				boxReceipt.timeline.some((event) => event.type === 'vite custom payload sent'),
+			).toBe(true);
+		},
+		TEST_TIMEOUT_MS,
+	);
+
+	test(
+		'correlates HMR evidence to edits when the dev root is a project subdirectory',
+		async () => {
+			const root = await createFixtureProject('nested');
+			const boxes = await selectBoxes(
+				root,
+				'app subdirectory edit hot-updates with fixture-rooted evidence',
+			);
+			const result = await runBoxes({ root, boxes, fileSystem });
+
+			expect(result.status, result.boxes[0]?.error?.message).toBe('passed');
+
+			const receipt = JSON.parse(
+				await fileSystem.readTextFile(result.receiptPath),
+			) as ReceiptJson;
+			const boxReceipt = receipt.boxes[0]!;
+			expect(boxReceipt.status).toBe('passed');
+
+			// The edit targets app/src/message.ts relative to the runner root,
+			// while Vite resolves update payload paths against the app/ dev root.
+			// The receipt must still attribute the update to this edit.
+			const clientOutcome = boxReceipt.editOutcomes[0]!.environments['client']!;
+			expect(clientOutcome.update).toBe(true);
+			expect(clientOutcome.fullReload).toBe(false);
+			expect(clientOutcome.invalidated.length).toBeGreaterThan(0);
+			expect(boxReceipt.edits[0]!.files[0]!.file).toBe('app/src/message.ts');
+			expect(boxReceipt.edits[0]!.restored).toBe(true);
+
+			expect(
+				boxReceipt.timeline.some(
+					(event) => event.type === 'vite hmr update sent' && event.source === 'channel',
+				),
+			).toBe(true);
+
+			const restoredFile = await fileSystem.readTextFile(
+				path.join(root, 'app', 'src', 'message.ts'),
+			);
+			expect(restoredFile).toContain('nested before');
 		},
 		TEST_TIMEOUT_MS,
 	);

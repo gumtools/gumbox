@@ -26,6 +26,28 @@ export const NoisyPage = box(
 	},
 );
 
+export const TrackedEvents = box(
+	{ name: 'page custom events and navigations become receipt evidence', modes: ['dev'] },
+	async ({ browser, expect }) => {
+		const page = await browser.visit('/?events=1');
+
+		await page.trackEvents('fixture:ping');
+		await expect.page.event(page, 'fixture:ping', { atLeast: 2 });
+		await expect.page.noNavigations(page);
+	},
+);
+
+export const ReloadIsANavigation = box(
+	{ name: 'page reload is recorded as a navigation', modes: ['dev'] },
+	async ({ browser, expect }) => {
+		const page = await browser.visit('/');
+
+		await page.reload();
+		// This must fail: the reload navigated the page.
+		await expect.page.noNavigations(page);
+	},
+);
+
 export const WrongText = box(
 	{ name: 'failing page text assertion', modes: ['dev'] },
 	async ({ browser, expect }) => {

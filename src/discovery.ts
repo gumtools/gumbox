@@ -21,13 +21,15 @@ const SKIPPED_DIRECTORY_GLOBS = [
  */
 function gumboxEntryFile(): string {
 	const self = fileURLToPath(import.meta.url);
-	// During development this module is `src/discovery.ts` and the public
-	// entry sits next to it; the published build bundles everything into the
-	// entry file itself, so `import.meta.url` already is the entry.
+	// During development this module is `src/discovery.ts` and the public TS
+	// entry sits next to it. In the published build this code lives in a
+	// chunk shared by the entry and the CLI bin — its exports are mangled, so
+	// the alias must point at the sibling public entry `index.mjs`, never at
+	// the chunk itself.
 	if (path.basename(self) === 'discovery.ts') {
 		return path.join(path.dirname(self), 'index.ts');
 	}
-	return self;
+	return path.join(path.dirname(self), 'index.mjs');
 }
 
 async function collectBoxFiles(root: string): Promise<string[]> {

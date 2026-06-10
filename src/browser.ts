@@ -52,6 +52,8 @@ export type GumboxBrowserPage = {
 	onConsoleMessage(listener: (message: BrowserConsoleMessage) => void): void;
 	onPageError(listener: (error: BrowserPageError) => void): void;
 	onRequestFailed(listener: (request: BrowserRequestFailure) => void): void;
+	/** Fires on every main-frame navigation (reloads included). */
+	onNavigated(listener: (url: string) => void): void;
 	close(): Promise<void>;
 };
 
@@ -62,6 +64,20 @@ export type PageSnapshot = {
 	screenshot: string | null;
 	/** Run-dir-relative HTML snapshot path. */
 	html: string;
+};
+
+/** A main-frame navigation observed after the initial page load. */
+export type PageNavigation = {
+	url: string;
+	at: string;
+};
+
+/** One tracked custom DOM event observed in the page. */
+export type TrackedPageEvent = {
+	/** ISO timestamp taken inside the page when the event fired. */
+	at: string;
+	/** JSON-serializable copy of `event.detail` (null when absent). */
+	detail: unknown;
 };
 
 /** Receipt evidence for one visited page. */
@@ -75,6 +91,10 @@ export type PageRecord = {
 	pageErrors: BrowserPageError[];
 	failedRequests: BrowserRequestFailure[];
 	snapshots: PageSnapshot[];
+	/** Main-frame navigations after the initial load; empty proves no reload. */
+	navigations: PageNavigation[];
+	/** Per event name, every occurrence observed since trackEvents(name). */
+	trackedEvents: Record<string, TrackedPageEvent[]>;
 };
 
 /**
@@ -88,6 +108,14 @@ export type PageHandle = {
 	readonly url: string;
 	reload(): Promise<void>;
 	content(): Promise<string>;
+	/**
+	 * Starts counting custom DOM events (for example a framework's HMR event)
+	 * in the live page. Observed events land in the page receipt evidence and
+	 * are asserted with `expect.page.event(page, name, { atLeast })`.
+	 * Tracking is per-document: a full reload discards in-page listeners,
+	 * which `navigations` evidence makes visible.
+	 */
+	trackEvents(...eventNames: string[]): Promise<void>;
 };
 
 export type VisitArgs = {
@@ -129,6 +157,74 @@ export function missingBrowserCapabilityError(context: string): Error {
 			`Pass \`browser\` to runBoxes(...) — the gumbox CLI wires a playwright-core ` +
 			`adapter automatically when playwright and a Chromium-family browser are installed.`,
 	);
+}
+
+/** In-page global that accumulates tracked custom DOM events per event name. */
+const TRACKED_EVENTS_GLOBAL = 'window.__gumboxTrackedEvents';
+
+/** Expression for how many tracked events of one name fired so far. */
+export function trackedEventCountExpression(eventName: string): string {
+	return `(((${TRACKED_EVENTS_GLOBAL} || {})[${JSON.stringify(eventName)}] || []).length)`;
+}
+
+/**
+ * Installs an in-page listener that records every occurrence of the event
+ * with a page-side timestamp and a JSON-safe copy of `event.detail`.
+ * Capture-phase listeners on both window and document catch window-, document-
+ * and element-dispatched events; the WeakSet dedupes propagation overlap.
+ */
+function trackEventScript(eventName: string): string {
+	return `(() => {
+	const name = ${JSON.stringify(eventName)};
+	const store = (${TRACKED_EVENTS_GLOBAL} = ${TRACKED_EVENTS_GLOBAL} || Object.create(null));
+	if (store[name]) { return; }
+	store[name] = [];
+	const seen = new WeakSet();
+	const record = (event) => {
+		if (seen.has(event)) { return; }
+		seen.add(event);
+		let detail = null;
+		try {
+			detail = JSON.parse(JSON.stringify(event.detail === undefined ? null : event.detail));
+		} catch {
+			detail = String(event.detail);
+		}
+		store[name].push({ at: new Date().toISOString(), detail });
+	};
+	window.addEventListener(name, record, true);
+	document.addEventListener(name, record, true);
+})()`;
+}
+
+/**
+ * Pulls the latest tracked-event occurrences out of the live page into the
+ * receipt record. A navigated (reloaded) page has a fresh document with no
+ * tracked data; previously pulled evidence is kept in that case.
+ */
+export async function syncTrackedEvents(
+	page: GumboxBrowserPage,
+	record: PageRecord,
+): Promise<void> {
+	const trackedNames = Object.keys(record.trackedEvents);
+	if (trackedNames.length === 0) {
+		return;
+	}
+	let observed: unknown;
+	try {
+		observed = await page.evaluate(`(${TRACKED_EVENTS_GLOBAL} || {})`);
+	} catch {
+		// The page is already closing or mid-navigation; keep what we have.
+		return;
+	}
+	if (observed === null || typeof observed !== 'object') {
+		return;
+	}
+	for (const name of trackedNames) {
+		const events = (observed as Record<string, unknown>)[name];
+		if (Array.isArray(events)) {
+			record.trackedEvents[name] = events as TrackedPageEvent[];
+		}
+	}
 }
 
 function snapshotSlug(label: string): string {
@@ -224,6 +320,8 @@ export function createBrowserEvidence(options: {
 			pageErrors: [],
 			failedRequests: [],
 			snapshots: [],
+			navigations: [],
+			trackedEvents: {},
 		};
 		pages.push(record);
 
@@ -259,6 +357,13 @@ export function createBrowserEvidence(options: {
 		onTimeline('route requested', { environment, path: route, surface, url });
 		await page.goto(url);
 		onTimeline('route visited', { environment, path: route, surface, url });
+		// Attached after the initial load on purpose: `navigations` evidence
+		// answers "did the page reload after the visit?", so the initial
+		// navigation must not count.
+		page.onNavigated((navigatedUrl) => {
+			record.navigations.push({ url: navigatedUrl, at: new Date().toISOString() });
+			onTimeline('page navigated', { page: record.id, url: navigatedUrl });
+		});
 		await snapshotPage(driver, 'visit');
 
 		const handle: PageHandle = {
@@ -270,6 +375,16 @@ export function createBrowserEvidence(options: {
 				onTimeline('page reloaded', { page: record.id, url });
 			},
 			content: () => page.content(),
+			trackEvents: async (...eventNames: string[]): Promise<void> => {
+				for (const eventName of eventNames) {
+					await page.evaluate(trackEventScript(eventName));
+					record.trackedEvents[eventName] ??= [];
+					onTimeline('page event tracking started', {
+						page: record.id,
+						event: eventName,
+					});
+				}
+			},
 		};
 		pageDrivers.set(handle, driver);
 		return handle;
@@ -283,6 +398,8 @@ export function createBrowserEvidence(options: {
 
 	const closeAll = async (): Promise<void> => {
 		for (const driver of openDrivers.splice(0)) {
+			// Late tracked events (after the last assertion) still become evidence.
+			await syncTrackedEvents(driver.page, driver.record);
 			await driver.page.close().catch(() => undefined);
 		}
 		if (session !== null) {

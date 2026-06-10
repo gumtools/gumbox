@@ -31,6 +31,8 @@ type PageEntry = {
 	pageErrors: Array<{ message: string }>;
 	failedRequests: Array<{ url: string; method: string; reason: string | null }>;
 	snapshots: SnapshotEntry[];
+	navigations: Array<{ url: string; at: string }>;
+	trackedEvents: Record<string, Array<{ at: string; detail: unknown }>>;
 };
 
 type PreviewEntry = {
@@ -195,6 +197,66 @@ describe.skipIf(!availability.available)('gumbox browser evidence', () => {
 			const timelineTypes = receipt.boxes[0]!.timeline.map((event) => event.type);
 			expect(timelineTypes).toContain('console error captured');
 			expect(timelineTypes).toContain('network failure captured');
+		},
+		TEST_TIMEOUT_MS,
+	);
+
+	test(
+		'tracked custom DOM events and zero navigations become receipt evidence',
+		async () => {
+			const root = await createFixtureProject();
+			const boxes = await selectBoxes(
+				root,
+				'page custom events and navigations become receipt evidence',
+			);
+			const result = await runBoxes({ root, boxes, fileSystem, browser: hostBrowser });
+
+			expect(result.status, result.boxes[0]?.error?.message).toBe('passed');
+
+			const receipt = await readReceipt(result.receiptPath);
+			const boxReceipt = receipt.boxes[0]!;
+			const page = boxReceipt.pages[0]!;
+
+			// Browser-side event evidence: every observed event with timestamp + detail.
+			const observed = page.trackedEvents['fixture:ping']!;
+			expect(observed.length).toBeGreaterThanOrEqual(2);
+			expect(observed[0]!.detail).toMatchObject({ tick: 1 });
+			expect(typeof observed[0]!.at).toBe('string');
+
+			// No navigation happened after the initial load.
+			expect(page.navigations).toEqual([]);
+
+			const assertionNames = boxReceipt.assertions.map((entry) => entry.name);
+			expect(assertionNames).toContain('page.event');
+			expect(assertionNames).toContain('page.noNavigations');
+			expect(boxReceipt.assertions.every((entry) => entry.status === 'passed')).toBe(true);
+
+			const timelineTypes = boxReceipt.timeline.map((event) => event.type);
+			expect(timelineTypes).toContain('page event tracking started');
+		},
+		TEST_TIMEOUT_MS,
+	);
+
+	test(
+		'a page reload counts as a navigation and fails expect.page.noNavigations',
+		async () => {
+			const root = await createFixtureProject();
+			const boxes = await selectBoxes(root, 'page reload is recorded as a navigation');
+			const result = await runBoxes({ root, boxes, fileSystem, browser: hostBrowser });
+
+			expect(result.status).toBe('failed');
+			const message = result.boxes[0]?.error?.message ?? '';
+			expect(message).toContain('navigation');
+
+			const receipt = await readReceipt(result.receiptPath);
+			const page = receipt.boxes[0]!.pages[0]!;
+			expect(page.navigations.length).toBeGreaterThanOrEqual(1);
+			expect(page.navigations[0]!.url).toContain('127.0.0.1');
+			expect(
+				receipt.boxes[0]!.assertions.some(
+					(entry) => entry.name === 'page.noNavigations' && entry.status === 'failed',
+				),
+			).toBe(true);
 		},
 		TEST_TIMEOUT_MS,
 	);

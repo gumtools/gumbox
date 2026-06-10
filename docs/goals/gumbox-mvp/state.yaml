@@ -433,7 +433,7 @@ tasks:
   - id: T008
     type: worker
     assignee: Worker
-    status: active
+    status: queued
     objective: "Slice 5: /__gumbox dev/preview middleware — box metadata, visual state gallery listing, state previews that point at real app URLs, execution endpoints, environment metadata, local-only receipt/timeline APIs, dev/preview-port-only guarantee, reject-remote-host default, local token posture; gumbox open."
     inputs:
       - specs/runtime-routes.md
@@ -498,11 +498,63 @@ tasks:
   - id: T019
     type: worker
     assignee: Worker
-    status: queued
-    objective: "qwik-bundler integration (user directive 2026-06-09, supersedes read-only constraint): replace the scripts/ folder in /Users/jacksm5pro/dev/open-source/qwik-bundler with gumbox boxes, with qwik-bundler depending on gumbox via link:../gumbox. Every smoke-script behavior inventoried in T002 must be expressible as a box (or explicitly recorded as out of gumbox scope with rationale); scripts/ is deleted only after its replacement boxes run green in qwik-bundler."
+    status: done
+    objective: "qwik-bundler integration phase 1 (user re-prioritized 2026-06-10; supersedes read-only constraint): link plumbing (generated package.json manifest in gumbox for pnpm link:../gumbox resolution) + replace the CSR HMR smoke scripts (smoke-vite-csr-hmr, smoke-vite-csr-attribute-hmr) with gumbox boxes running green in qwik-bundler on branch gumbox-scripts, with receipts that show exactly what happened during HMR (edits/diffs, invalidated modules, hot payloads, accepted vs reload, browser-side qHmr events, zero navigations, timing)."
     inputs:
       - notes/T002-qwik-bundler-scripts.md
-      - /Users/jacksm5pro/dev/open-source/qwik-bundler/scripts/
+      - notes/T014-findings.md
+      - /Users/jacksm5pro/dev/open-source/qwik-bundler/scripts/smoke-vite-csr-hmr.mjs
+      - /Users/jacksm5pro/dev/open-source/qwik-bundler/scripts/smoke-vite-csr-attribute-hmr.mjs
+      - /Users/jacksm5pro/dev/open-source/qwik-bundler/fixtures/vite-csr/
+    allowed_files:
+      - "src/**"
+      - "test/**"
+      - "deno.json"
+      - "deno.lock"
+      - ".gitignore"
+      - "vite.config.ts"
+      - "tsconfig.json"
+      - "scripts/**"
+      - "docs/goals/gumbox-mvp/notes/T019-*.md"
+      - "/Users/jacksm5pro/dev/open-source/qwik-bundler/** (branch gumbox-scripts only; do NOT delete scripts/ this phase)"
+    verify:
+      - "deno task test (gumbox)"
+      - "deno task build (gumbox)"
+      - "deno task check (gumbox)"
+      - "boxes run green in qwik-bundler via the linked gumbox CLI"
+    stop_if:
+      - "pnpm link:../gumbox cannot resolve after two distinct manifest strategies — record exact errors."
+      - "Receipts would be HMR-shallow and deepening requires browser-runtime hooks beyond playwright-core capability."
+      - "Tests only pass with blind sleeps instead of event-driven waits."
+      - "Verification fails twice."
+    receipt:
+      result: done
+      note: notes/T019-findings.md
+      changed_files: ["gumbox: src/{evidence,browser,expect,types,discovery,runner,index}.ts, src/cli/browser-host.ts, scripts/generate-package-json.ts, deno.json, .gitignore, test/**", "qwik-bundler(gumbox-scripts bf97af6): boxes/csr-hmr.box.ts, boxes/csr-attribute-hmr.box.ts, package.json (link:../gumbox), pnpm-lock.yaml, .gitignore"]
+      commands:
+        - { cmd: "deno task test", status: pass, detail: "37/37 (4 new); PM re-verified after removing rejected-T008 residue" }
+        - { cmd: "deno task build && deno task check", status: pass, detail: "PM re-verified" }
+        - { cmd: "deno task manifest && deno install", status: pass, detail: "generated package.json gitignored; deno.lock no drift" }
+        - { cmd: "pnpm exec gumbox csr (qwik-bundler)", status: pass, detail: "2/2 boxes green repeatedly; fixtures git-clean after runs; PM re-verified and audited receipt depth directly" }
+      summary: "Phase 1 done. Link plumbing: deno task manifest emits a gitignored dependency-free package.json (exports/bin/peer vite) so pnpm link:../gumbox resolves — first strategy worked. Fixed real dist bug (discovery aliased @gumbox/vite to a mangled shared chunk). Both CSR smoke scripts replaced by boxes on qwik-bundler branch gumbox-scripts. HMR depth: key discovery that qwik never sends Vite 'update' payloads — it broadcasts qwik:hmr custom payloads; EnvironmentEditOutcome now records customPayloads (hotUpdate hook order:'pre' so framework plugins can't hide invalidation), plus expect.environment.*.customPayload, page.trackEvents, expect.page.event/noNavigations. Receipt for csr-hmr shows: exact edit diff+before/after+restored:true, per-env invalidated modules (client /src/home.tsx vs ssr none), qwik:hmr payloads incl. segment files, fullReload:false, navigations:[], qHmr browser events with in-page timestamps, ~105ms edit→browser timing."
+      notes:
+        - "PM removed rejected-T008 residue the worker flagged (orphan test/middleware.test.ts + ufo/std-env deps); re-verified green after removal."
+        - "EnvironmentEditOutcome.plugins still [] — plugin attribution remains the T017 evidence-pack item."
+        - "qwik-bundler main untouched; integration lives on branch gumbox-scripts."
+  - id: T020
+    type: worker
+    assignee: Worker
+    status: queued
+    objective: "qwik-bundler integration phase 2: replace the nitro SSR HMR scripts (smoke-vite-nitro-hmr, smoke-vite-nitro-remove-handler-hmr, smoke-vite-nitro-remove-signal-hmr incl. state preservation) and the workerd family (smoke-vite-workerd-hmr, smoke-vite-workerd, smoke-vite-workerd-router, smoke-vite-workerd-router-browser) with boxes; receipts must show per-fixture HMR causality across client+ssr environments."
+    allowed_files: []
+    verify: []
+    stop_if: []
+    receipt: null
+  - id: T021
+    type: worker
+    assignee: Worker
+    status: queued
+    objective: "qwik-bundler integration phase 3 (cutover): replace smoke-vite-router-browser, smoke-vite-ssg, check-hmr-leakage with boxes; rewire qwik-bundler package.json test:* scripts to the gumbox CLI; delete scripts/ (incl. with-lock — gumbox owns serialization) once every replacement box runs green."
     allowed_files: []
     verify: []
     stop_if: []

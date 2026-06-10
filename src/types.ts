@@ -198,8 +198,23 @@ export type ExpectWaitOptions = {
 	timeoutMs?: number;
 };
 
+export type PageEventExpectOptions = ExpectWaitOptions & {
+	/** Minimum number of observed events (default 1). */
+	atLeast?: number;
+};
+
 export type EnvironmentExpectApi = {
 	hotUpdate(change: EditReceipt, options?: ExpectWaitOptions): Promise<void>;
+	/**
+	 * Waits until the environment broadcasts a custom hot payload with this
+	 * event name after the edit. Frameworks that replace Vite's 'update'
+	 * protocol (for example qwik's 'qwik:hmr') are asserted with this.
+	 */
+	customPayload(
+		change: EditReceipt,
+		eventName: string,
+		options?: ExpectWaitOptions,
+	): Promise<void>;
 	noFullReload(change: EditReceipt, options?: ExpectWaitOptions): Promise<void>;
 	invalidated(
 		change: EditReceipt,
@@ -242,6 +257,14 @@ export type PageExpectApi = {
 	): Promise<void>;
 	/** Asserts the page captured no console errors or uncaught page errors. */
 	cleanConsole(page: PageHandle): Promise<void>;
+	/**
+	 * Waits until at least `atLeast` tracked DOM events of this name fired in
+	 * the page, then records every occurrence (timestamp + detail) as page
+	 * evidence. Requires a prior `page.trackEvents(eventName)`.
+	 */
+	event(page: PageHandle, eventName: string, options?: PageEventExpectOptions): Promise<void>;
+	/** Asserts the page never navigated (no reloads) after the initial load. */
+	noNavigations(page: PageHandle): Promise<void>;
 };
 
 export type ExpectApi = {
@@ -300,6 +323,16 @@ export type VitePluginEvidence = {
 };
 
 /**
+ * A custom hot payload broadcast on the environment channel after an edit.
+ * Frameworks (for example qwik) replace Vite's standard 'update' protocol
+ * with their own events; these are first-class HMR evidence.
+ */
+export type ViteCustomPayloadEvidence = {
+	event: string;
+	data?: unknown;
+};
+
+/**
  * Normalized per-environment reaction to one project edit.
  */
 export type EnvironmentEditOutcome = {
@@ -311,6 +344,8 @@ export type EnvironmentEditOutcome = {
 	error: ViteErrorEvidence | null;
 	invalidated: ViteModuleEvidence[];
 	updates: ViteUpdateEvidence[];
+	/** Custom hot payloads broadcast after the edit (framework HMR protocols). */
+	customPayloads: ViteCustomPayloadEvidence[];
 	plugins: VitePluginEvidence[];
 };
 

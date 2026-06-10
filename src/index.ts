@@ -20,8 +20,10 @@ export type {
 	GumboxBrowserPage,
 	GumboxBrowserSession,
 	PageHandle,
+	PageNavigation,
 	PageRecord,
 	PageSnapshot,
+	TrackedPageEvent,
 } from './browser.ts';
 export type {
 	EvidenceEvent,
@@ -61,6 +63,7 @@ export type {
 	ExpectWaitOptions,
 	InvalidBoxFile,
 	Measurement,
+	PageEventExpectOptions,
 	PageExpectApi,
 	PipelineApi,
 	PipelineBuildOptions,
@@ -72,6 +75,7 @@ export type {
 	ReceiptApi,
 	RunBoxesOptions,
 	RunBoxesResult,
+	ViteCustomPayloadEvidence,
 	ViteErrorEvidence,
 	ViteModuleEvidence,
 	VitePluginEvidence,

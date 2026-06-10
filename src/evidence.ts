@@ -4,6 +4,7 @@ import type { DevEnvironment, Plugin } from 'vite';
 import type {
 	EditReceipt,
 	EnvironmentEditOutcome,
+	ViteCustomPayloadEvidence,
 	ViteModuleEvidence,
 	ViteUpdateEvidence,
 } from './types.ts';
@@ -178,9 +179,14 @@ export function payloadFiles(
  * Internal Vite plugin that observes `hotUpdate` hooks for every environment,
  * wraps each environment hot channel to capture outgoing payloads, and
  * records dev server restarts.
+ *
+ * Payload URL paths are mapped to files against the *resolved* Vite root: a
+ * box may overlay the dev root to a project subdirectory (a fixture app), and
+ * edit correlation must follow the root the server actually serves from.
  */
-export function createEvidencePlugin(store: EvidenceStore, root: string): Plugin {
+export function createEvidencePlugin(store: EvidenceStore, fallbackRoot: string): Plugin {
 	const wrappedChannels = new WeakSet<object>();
+	let resolvedRoot = fallbackRoot;
 	let configureCount = 0;
 
 	const wrapEnvironment = (environment: DevEnvironment): void => {
@@ -202,7 +208,7 @@ export function createEvidencePlugin(store: EvidenceStore, root: string): Plugin
 				source: 'channel',
 				environment: environment.name,
 				payload,
-				files: payloadFiles(root, payload),
+				files: payloadFiles(resolvedRoot, payload),
 			});
 			originalSend(...args);
 		};
@@ -211,6 +217,9 @@ export function createEvidencePlugin(store: EvidenceStore, root: string): Plugin
 
 	return {
 		name: 'gumbox:evidence',
+		configResolved(config) {
+			resolvedRoot = config.root;
+		},
 		configureServer(server) {
 			configureCount += 1;
 			if (configureCount > 1) {
@@ -233,18 +242,24 @@ export function createEvidencePlugin(store: EvidenceStore, root: string): Plugin
 				wrapEnvironment(environment);
 			}
 		},
-		hotUpdate(options) {
-			store.record({
-				kind: 'hot-update-hook',
-				environment: this.environment.name,
-				changeType: options.type,
-				file: options.file,
-				modules: options.modules.map((mod) => ({
-					url: mod.url,
-					id: mod.id ?? null,
-					file: mod.file ?? null,
-				})),
-			});
+		hotUpdate: {
+			// 'pre' so the original invalidated module list is recorded before
+			// a framework plugin can replace it (returning [] to take over HMR
+			// with a custom protocol must not hide the invalidation evidence).
+			order: 'pre',
+			handler(options) {
+				store.record({
+					kind: 'hot-update-hook',
+					environment: this.environment.name,
+					changeType: options.type,
+					file: options.file,
+					modules: options.modules.map((mod) => ({
+						url: mod.url,
+						id: mod.id ?? null,
+						file: mod.file ?? null,
+					})),
+				});
+			},
 		},
 	};
 }
@@ -333,6 +348,7 @@ export function classifyEditOutcome(options: {
 	let error: Record<string, unknown> | null = null;
 	let invalidated: ViteModuleEvidence[] = [];
 	const updates: ViteUpdateEvidence[] = [];
+	const customPayloads: ViteCustomPayloadEvidence[] = [];
 	let hookSeen = false;
 
 	for (const event of store.events) {
@@ -370,12 +386,25 @@ export function classifyEditOutcome(options: {
 				fullReload = true;
 			} else if (event.payload.type === 'error') {
 				error = (event.payload.err as Record<string, unknown> | undefined) ?? event.payload;
+			} else if (event.payload.type === 'custom' && event.source === 'channel') {
+				// Channel sends only: the websocket client mirrors the same
+				// payload and would double-count it.
+				customPayloads.push({
+					event: String(event.payload.event),
+					...(event.payload.data === undefined ? {} : { data: event.payload.data }),
+				});
 			}
 		}
 	}
 
+	// A custom payload after the hook observed the change is a terminal
+	// reaction too: frameworks like qwik replace the 'update' protocol.
 	const settled =
-		update || fullReload || restart || error !== null || (hookSeen && invalidated.length === 0);
+		update ||
+		fullReload ||
+		restart ||
+		error !== null ||
+		(hookSeen && (invalidated.length === 0 || customPayloads.length > 0));
 	return {
 		settled,
 		hookSeen,
@@ -388,6 +417,7 @@ export function classifyEditOutcome(options: {
 			error,
 			invalidated,
 			updates,
+			customPayloads,
 			plugins: [],
 		},
 	};

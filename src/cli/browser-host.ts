@@ -89,6 +89,13 @@ function adaptPage(page: Page): GumboxBrowserPage {
 				});
 			});
 		},
+		onNavigated: (listener) => {
+			page.on('framenavigated', (frame) => {
+				if (frame === page.mainFrame()) {
+					listener(frame.url());
+				}
+			});
+		},
 		close: () => page.close(),
 	};
 }

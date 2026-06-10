@@ -1,9 +1,4 @@
-import { customMessage } from './custom-message';
 import { message } from './message';
-
-// Keep custom-message.ts in the client module graph; its HMR is handled by
-// the fixture's custom hot protocol plugin, not by Vite update payloads.
-console.log(customMessage);
 
 function render(value: string): void {
 	const target = document.querySelector('#message');
