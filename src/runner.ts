@@ -403,6 +403,18 @@ async function runSingleBox(args: {
 }
 
 /**
+ * Dev-mode boxes run before build/preview-mode boxes: a production build in
+ * the same process can poison a dev pipeline of the same fixture that runs
+ * after it (plugin module state survives across boxes until per-box process
+ * isolation lands). Order within each group is preserved.
+ */
+export function orderBoxesForRun(boxes: DiscoveredBox[]): DiscoveredBox[] {
+	const devBoxes = boxes.filter((entry) => entry.box.modes.includes('dev'));
+	const nonDevBoxes = boxes.filter((entry) => !entry.box.modes.includes('dev'));
+	return [...devBoxes, ...nonDevBoxes];
+}
+
+/**
  * Runs boxes against a project root and writes one versioned receipt for the
  * whole run to `<root>/.gumbox/receipts/<run id>/receipt.json`, plus a
  * `latest` pointer file. A receipt is written even when boxes fail.
@@ -417,6 +429,7 @@ export async function runBoxes(options: RunBoxesOptions): Promise<RunBoxesResult
 		boxes = discovery.boxes;
 		invalid = discovery.invalid;
 	}
+	boxes = orderBoxesForRun(boxes);
 	const { runId, runDir, receiptPath, receiptsDir } = await createRunDirectory(
 		root,
 		fileSystem,
