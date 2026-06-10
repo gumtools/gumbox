@@ -70,6 +70,9 @@ function adaptPage(page: Page): GumboxBrowserPage {
 		waitForExpression: async (expression, timeoutMs) => {
 			await page.waitForFunction(expression, undefined, { timeout: timeoutMs });
 		},
+		click: async (selector, timeoutMs) => {
+			await page.click(selector, { timeout: timeoutMs });
+		},
 		onConsoleMessage: (listener) => {
 			page.on('console', (message) => {
 				listener({ level: message.type(), text: message.text() });

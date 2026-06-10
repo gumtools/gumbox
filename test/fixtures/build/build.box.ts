@@ -1,4 +1,4 @@
-import { box } from '@gumbox/vite';
+import { box } from 'gumbox';
 
 const FORBIDDEN = 'GUMBOX_SERVER_ONLY_SECRET';
 

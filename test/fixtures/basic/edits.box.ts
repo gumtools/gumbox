@@ -1,4 +1,4 @@
-import { box } from '@gumbox/vite';
+import { box } from 'gumbox';
 
 function ensure(condition: boolean, message: string): void {
 	if (!condition) {

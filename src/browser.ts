@@ -49,6 +49,8 @@ export type GumboxBrowserPage = {
 	evaluate(expression: string): Promise<unknown>;
 	/** Event-driven bounded wait until the expression evaluates truthy. */
 	waitForExpression(expression: string, timeoutMs: number): Promise<void>;
+	/** Clicks the first element matching the selector, waiting (bounded) for it to be actionable. */
+	click(selector: string, timeoutMs: number): Promise<void>;
 	onConsoleMessage(listener: (message: BrowserConsoleMessage) => void): void;
 	onPageError(listener: (error: BrowserPageError) => void): void;
 	onRequestFailed(listener: (request: BrowserRequestFailure) => void): void;
@@ -69,6 +71,13 @@ export type PageSnapshot = {
 /** A main-frame navigation observed after the initial page load. */
 export type PageNavigation = {
 	url: string;
+	at: string;
+};
+
+/** One user-style interaction a box performed on the page. */
+export type PageInteraction = {
+	kind: 'click';
+	selector: string;
 	at: string;
 };
 
@@ -95,6 +104,8 @@ export type PageRecord = {
 	navigations: PageNavigation[];
 	/** Per event name, every occurrence observed since trackEvents(name). */
 	trackedEvents: Record<string, TrackedPageEvent[]>;
+	/** Interactions the box performed on this page (clicks), in order. */
+	interactions: PageInteraction[];
 };
 
 /**
@@ -108,6 +119,14 @@ export type PageHandle = {
 	readonly url: string;
 	reload(): Promise<void>;
 	content(): Promise<string>;
+	/**
+	 * Clicks the first element matching the selector, waiting (bounded,
+	 * event-driven) for it to become actionable. The minimal interaction
+	 * primitive for reaching a user-made UI state — for example clicking a
+	 * counter to a known count before an HMR edit. Each click is recorded as
+	 * page evidence; assertions stay in `expect.page.*`.
+	 */
+	click(selector: string, options?: { timeoutMs?: number }): Promise<void>;
 	/**
 	 * Starts counting custom DOM events (for example a framework's HMR event)
 	 * in the live page. Observed events land in the page receipt evidence and
@@ -248,9 +267,12 @@ export function createBrowserEvidence(options: {
 	runDir: string;
 	/** Run-dir-relative directory for this box's page assets, e.g. 'box-1'. */
 	assetDir: string;
+	/** Default bounded wait for page interactions such as click(). */
+	interactionTimeoutMs: number;
 	onTimeline(type: string, detail: Record<string, unknown>): void;
 }): BrowserEvidenceRuntime {
-	const { browser, headless, fileSystem, runDir, assetDir, onTimeline } = options;
+	const { browser, headless, fileSystem, runDir, assetDir, interactionTimeoutMs, onTimeline } =
+		options;
 	const pages: PageRecord[] = [];
 	const openDrivers: PageDriver[] = [];
 	let session: GumboxBrowserSession | null = null;
@@ -322,6 +344,7 @@ export function createBrowserEvidence(options: {
 			snapshots: [],
 			navigations: [],
 			trackedEvents: {},
+			interactions: [],
 		};
 		pages.push(record);
 
@@ -375,6 +398,19 @@ export function createBrowserEvidence(options: {
 				onTimeline('page reloaded', { page: record.id, url });
 			},
 			content: () => page.content(),
+			click: async (
+				selector: string,
+				clickOptions?: { timeoutMs?: number },
+			): Promise<void> => {
+				const timeoutMs = clickOptions?.timeoutMs ?? interactionTimeoutMs;
+				await page.click(selector, timeoutMs);
+				record.interactions.push({
+					kind: 'click',
+					selector,
+					at: new Date().toISOString(),
+				});
+				onTimeline('page click', { page: record.id, selector });
+			},
 			trackEvents: async (...eventNames: string[]): Promise<void> => {
 				for (const eventName of eventNames) {
 					await page.evaluate(trackEventScript(eventName));

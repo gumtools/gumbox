@@ -1,4 +1,4 @@
-import { box } from '@gumbox/vite';
+import { box } from 'gumbox';
 
 export const PreviewDashboard = box(
 	{ name: 'built app serves dashboard in preview', tags: ['preview'], modes: ['preview'] },

@@ -2,7 +2,7 @@
  * Generates the npm-consumption manifest (package.json) at the repo root from
  * deno.json, which is the canonical workspace/package manifest. The generated
  * package.json is gitignored build output: it only exists so package managers
- * (for example pnpm with `"@gumbox/vite": "link:../gumbox"`) can resolve this
+ * (for example pnpm with `"gumbox": "link:../gumbox"`) can resolve this
  * package and its dist build + CLI bin.
  *
  * This is a host-side Deno tool. It lives outside src/ and test/ on purpose:

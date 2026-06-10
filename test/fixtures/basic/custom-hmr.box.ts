@@ -1,4 +1,4 @@
-import { box } from '@gumbox/vite';
+import { box } from 'gumbox';
 
 // Frameworks like qwik replace Vite's 'update' payload with their own custom
 // hot protocol. The custom payload is the terminal HMR evidence then:

@@ -12,9 +12,11 @@ import type {
 	EditReceipt,
 	EnvironmentEditOutcome,
 	EnvironmentExpectApi,
+	EnvironmentResponse,
 	ExpectApi,
 	ExpectWaitOptions,
 	PageExpectApi,
+	ResponseExpectation,
 } from './types.ts';
 
 export class GumboxAssertionError extends Error {}
@@ -396,6 +398,81 @@ export function createExpectApi(options: {
 				},
 			});
 		},
+		containsText: async (page, fragment, waitOptions?: ExpectWaitOptions): Promise<void> => {
+			await expectPageCondition({
+				assertion: 'page.containsText',
+				page,
+				condition: `(document.body?.textContent ?? '').includes(${JSON.stringify(fragment)})`,
+				timeoutMs: waitOptions?.timeoutMs ?? defaultTimeoutMs,
+				describeFailure: async () =>
+					`expected the page body text to contain ${JSON.stringify(fragment)}, but it never appeared`,
+			});
+		},
+		notContainsText: async (page, fragment, waitOptions?: ExpectWaitOptions): Promise<void> => {
+			await expectPageCondition({
+				assertion: 'page.notContainsText',
+				page,
+				condition: `!(document.body?.textContent ?? '').includes(${JSON.stringify(fragment)})`,
+				timeoutMs: waitOptions?.timeoutMs ?? defaultTimeoutMs,
+				describeFailure: async () =>
+					`expected the page body text to stop containing ${JSON.stringify(fragment)}, but it was still present`,
+			});
+		},
+		attribute: async (
+			page,
+			selector,
+			attributeName,
+			expected?: string,
+			waitOptions?: ExpectWaitOptions,
+		): Promise<void> => {
+			const element = selectorExpression(selector);
+			const attributeValue = `${element}?.getAttribute(${JSON.stringify(attributeName)})`;
+			const condition =
+				expected === undefined
+					? `(${attributeValue}) !== null && (${attributeValue}) !== undefined`
+					: `(${attributeValue}) === ${JSON.stringify(expected)}`;
+			await expectPageCondition({
+				assertion: 'page.attribute',
+				page,
+				condition,
+				timeoutMs: waitOptions?.timeoutMs ?? defaultTimeoutMs,
+				describeFailure: async () => {
+					const actual = await readPageState(
+						page,
+						`(() => { const el = ${element}; return el === null ? { missing: true } : { value: el.getAttribute(${JSON.stringify(attributeName)}) }; })()`,
+					);
+					if ((actual as { missing?: boolean } | undefined)?.missing === true) {
+						return `expected '${selector}' to have attribute '${attributeName}', but no element matched the selector`;
+					}
+					const value = (actual as { value?: string | null } | undefined)?.value ?? null;
+					if (expected === undefined) {
+						return `expected '${selector}' to have attribute '${attributeName}', but it was absent`;
+					}
+					return `expected '${selector}' attribute '${attributeName}' to be ${JSON.stringify(expected)}, but it was ${JSON.stringify(value)}`;
+				},
+			});
+		},
+		noAttribute: async (
+			page,
+			selector,
+			attributeName,
+			waitOptions?: ExpectWaitOptions,
+		): Promise<void> => {
+			const element = selectorExpression(selector);
+			await expectPageCondition({
+				assertion: 'page.noAttribute',
+				page,
+				condition: `(() => { const el = ${element}; return el !== null && !el.hasAttribute(${JSON.stringify(attributeName)}); })()`,
+				timeoutMs: waitOptions?.timeoutMs ?? defaultTimeoutMs,
+				describeFailure: async () => {
+					const exists = await readPageState(page, `${element} !== null`);
+					if (exists === false) {
+						return `expected '${selector}' to exist without attribute '${attributeName}', but no element matched the selector`;
+					}
+					return `expected '${selector}' to lose attribute '${attributeName}', but the element still carries it`;
+				},
+			});
+		},
 		exists: async (page, selector, waitOptions?: ExpectWaitOptions): Promise<void> => {
 			await expectPageCondition({
 				assertion: 'page.exists',
@@ -502,6 +579,26 @@ export function createExpectApi(options: {
 			}
 			passAssertion('page.noNavigations', driver.record.environment, null);
 		},
+		noFailedRequests: async (page): Promise<void> => {
+			const driver = getPageDriver(page, 'expect.page.noFailedRequests');
+			const failures = driver.record.failedRequests;
+			if (failures.length > 0) {
+				const shown = failures
+					.slice(0, 5)
+					.map(
+						(failure) =>
+							`${failure.method} ${failure.url} (${failure.reason ?? 'unknown reason'})`,
+					)
+					.join('; ');
+				failAssertion(
+					'page.noFailedRequests',
+					driver.record.environment,
+					null,
+					`expected page ${page.url} to have no failed requests, but captured ${failures.length} failed request(s): ${shown}`,
+				);
+			}
+			passAssertion('page.noFailedRequests', driver.record.environment, null);
+		},
 		cleanConsole: async (page): Promise<void> => {
 			const driver = getPageDriver(page, 'expect.page.cleanConsole');
 			const consoleErrors = driver.record.consoleMessages
@@ -570,6 +667,45 @@ export function createExpectApi(options: {
 					);
 				}
 				passAssertion('html.contains', null, null);
+			},
+		},
+		response: {
+			matches: async (
+				response: EnvironmentResponse,
+				expectation: ResponseExpectation,
+			): Promise<void> => {
+				const problems: string[] = [];
+				if (expectation.status !== undefined && response.status !== expectation.status) {
+					problems.push(`expected status ${expectation.status}, got ${response.status}`);
+				}
+				if (expectation.ok !== undefined && response.ok !== expectation.ok) {
+					problems.push(`expected ok=${expectation.ok}, got ok=${response.ok}`);
+				}
+				if (
+					expectation.contentType !== undefined &&
+					!(response.contentType ?? '').includes(expectation.contentType.toLowerCase())
+				) {
+					problems.push(
+						`expected content-type to include ${JSON.stringify(expectation.contentType)}, got ${JSON.stringify(response.contentType)}`,
+					);
+				}
+				if (
+					expectation.contains !== undefined &&
+					!response.text.includes(expectation.contains)
+				) {
+					problems.push(
+						`expected the body (${response.text.length} characters) to contain ${JSON.stringify(expectation.contains)}`,
+					);
+				}
+				if (problems.length > 0) {
+					failAssertion(
+						'response.matches',
+						response.environment,
+						null,
+						`response for '${response.path}' from environment '${response.environment}' did not match: ${problems.join('; ')}.`,
+					);
+				}
+				passAssertion('response.matches', response.environment, null);
 			},
 		},
 		pipeline: {

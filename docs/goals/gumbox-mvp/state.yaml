@@ -544,11 +544,31 @@ tasks:
   - id: T020
     type: worker
     assignee: Worker
-    status: queued
+    status: active
     objective: "qwik-bundler integration phase 2: replace the nitro SSR HMR scripts (smoke-vite-nitro-hmr, smoke-vite-nitro-remove-handler-hmr, smoke-vite-nitro-remove-signal-hmr incl. state preservation) and the workerd family (smoke-vite-workerd-hmr, smoke-vite-workerd, smoke-vite-workerd-router, smoke-vite-workerd-router-browser) with boxes; receipts must show per-fixture HMR causality across client+ssr environments."
-    allowed_files: []
-    verify: []
-    stop_if: []
+    inputs:
+      - notes/T002-qwik-bundler-scripts.md
+      - notes/T019-findings.md
+      - /Users/jacksm5pro/dev/open-source/qwik-bundler/scripts/
+      - /Users/jacksm5pro/dev/open-source/qwik-bundler/boxes/
+    allowed_files:
+      - "src/**"
+      - "test/**"
+      - "deno.json"
+      - "deno.lock"
+      - "vite.config.ts"
+      - "tsconfig.json"
+      - "docs/goals/gumbox-mvp/notes/T020-*.md"
+      - "/Users/jacksm5pro/dev/open-source/qwik-bundler/** (branch gumbox-scripts only; do NOT delete scripts/ this phase)"
+    verify:
+      - "deno task test/build/check (gumbox)"
+      - "all phase-2 boxes run green in qwik-bundler via the linked gumbox CLI, twice"
+      - "fixtures/ git-clean after runs"
+    stop_if:
+      - "A script behavior is not expressible as a box without breaking gumbox's spec surface — record it as out-of-scope with rationale instead of forcing it."
+      - "workerd environment cannot run in this sandbox after two distinct attempts — record exact blocker, return partial."
+      - "Tests only pass with blind sleeps instead of event-driven waits."
+      - "Verification fails twice."
     receipt: null
   - id: T021
     type: worker

@@ -15,7 +15,7 @@ const SKIPPED_DIRECTORY_GLOBS = [
 ];
 
 /**
- * Box files import '@gumbox/vite', but discovered projects (for example a
+ * Box files import 'gumbox', but discovered projects (for example a
  * fixture copied to a temp dir) may have no node_modules. The import is
  * aliased to this package's own entry module instead.
  */
@@ -59,7 +59,7 @@ export async function discoverBoxes(options: { root: string }): Promise<Discover
 				root,
 				logLevel: 'error',
 				resolve: {
-					alias: { '@gumbox/vite': gumboxEntryFile() },
+					alias: { gumbox: gumboxEntryFile() },
 				},
 			});
 			const exported = Object.entries(module).filter(
@@ -69,7 +69,7 @@ export async function discoverBoxes(options: { root: string }): Promise<Discover
 				invalid.push({
 					file,
 					relativeFile,
-					error: `${relativeFile} does not export a box. Export the result of box(name, run) from '@gumbox/vite' as the default export or a named export.`,
+					error: `${relativeFile} does not export a box. Export the result of box(name, run) from 'gumbox' as the default export or a named export.`,
 				});
 				continue;
 			}

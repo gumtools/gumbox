@@ -139,6 +139,7 @@ async function runSingleBox(args: {
 		fileSystem,
 		runDir,
 		assetDir: `box-${boxIndex}`,
+		interactionTimeoutMs: assertionTimeoutMs,
 		onTimeline: (type, detail) => recorder.timeline(type, detail),
 	});
 	recorder.pages = browserEvidence.pages;

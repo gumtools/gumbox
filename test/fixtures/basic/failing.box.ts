@@ -1,4 +1,4 @@
-import { box } from '@gumbox/vite';
+import { box } from 'gumbox';
 
 export default box('intentionally failing box', async ({ project }) => {
 	await project.edit('src/message.ts', {

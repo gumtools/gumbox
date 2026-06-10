@@ -26,7 +26,7 @@ Preferred files:
 Recommended export:
 
 ```ts
-import { box } from '@gumbox/vite';
+import { box } from 'gumbox';
 
 export default box('message updates without reload', async ({ browser, project, expect }) => {
 	const page = await browser.visit('/demo');
@@ -45,7 +45,7 @@ Named exports are allowed when one file naturally contains related pipeline
 states:
 
 ```ts
-import { box } from '@gumbox/vite';
+import { box } from 'gumbox';
 
 export const Hmr = box('message hmr', async ({ browser, project, expect }) => {
 	const page = await browser.visit('/demo');
@@ -168,7 +168,7 @@ UI state boxes are the visual state-browsing surface.
 They should use the same API as pipeline boxes:
 
 ```ts
-import { box } from '@gumbox/vite';
+import { box } from 'gumbox';
 
 export default box('empty cart', async ({ browser, expect, receipt }) => {
 	const page = await browser.visit('/cart?state=empty');
@@ -569,7 +569,7 @@ Gumbox.
 Example:
 
 ```ts
-declare module '@gumbox/vite' {
+declare module 'gumbox' {
 	interface GumboxProjectTypes {
 		environments: 'client' | 'ssr' | 'rsc';
 		browserEnvironment: 'client';
@@ -611,7 +611,7 @@ plain `string`.
 ### Simple Route Visit
 
 ```ts
-import { box } from '@gumbox/vite';
+import { box } from 'gumbox';
 
 export default box('dashboard route works', async ({ browser, expect, receipt }) => {
 	const page = await browser.visit('/dashboard');
@@ -628,7 +628,7 @@ network evidence.
 ### HMR
 
 ```ts
-import { box } from '@gumbox/vite';
+import { box } from 'gumbox';
 
 export default box('message updates without reload', async ({ browser, project, expect }) => {
 	const page = await browser.visit('/demo');
@@ -652,7 +652,7 @@ Did this saved file change update the browser environment without a full reload?
 ### SSR Environment
 
 ```ts
-import { box } from '@gumbox/vite';
+import { box } from 'gumbox';
 
 export default box('home SSR hydrates cleanly', async ({ environment, browser, expect }) => {
 	const html = await environment.ssr.request('/');
@@ -667,7 +667,7 @@ export default box('home SSR hydrates cleanly', async ({ environment, browser, e
 ### Environment Isolation
 
 ```ts
-import { box } from '@gumbox/vite';
+import { box } from 'gumbox';
 
 export default box(
 	'server edit does not reload browser',
@@ -688,7 +688,7 @@ export default box(
 ### Config Change
 
 ```ts
-import { box } from '@gumbox/vite';
+import { box } from 'gumbox';
 
 export default box(
 	'vite config change reloads the plugin pipeline',
@@ -714,7 +714,7 @@ Vite lifecycle box.
 ### Build And Preview
 
 ```ts
-import { box } from '@gumbox/vite';
+import { box } from 'gumbox';
 
 export default box('built app visits dashboard', async ({ pipeline, expect }) => {
 	const build = await pipeline.build();
@@ -735,7 +735,7 @@ Preview routes must stay local to the preview run.
 ### CSS And Asset Parity
 
 ```ts
-import { box } from '@gumbox/vite';
+import { box } from 'gumbox';
 
 export default box('css module matches dev and preview', async ({ browser, pipeline, expect }) => {
 	const devPage = await browser.visit('/styles');
@@ -764,7 +764,7 @@ Did Vite transform, emit, and serve CSS/assets consistently in dev and preview?
 ### Resolver And Module Identity
 
 ```ts
-import { box } from '@gumbox/vite';
+import { box } from 'gumbox';
 
 export default box(
 	'workspace edit invalidates one module identity',
@@ -793,7 +793,7 @@ Did aliases, symlinks, and platform paths resolve to the intended Vite module?
 ### Plugin Hook And Artifact Integrity
 
 ```ts
-import { box } from '@gumbox/vite';
+import { box } from 'gumbox';
 
 export default box('server manifest placeholder is replaced', async ({ pipeline, expect }) => {
 	const build = await pipeline.build();
@@ -817,7 +817,7 @@ Did the Vite plugin hook evidence and the emitted build output agree?
 ### Runtime Refactor Oracle
 
 ```ts
-import { box } from '@gumbox/vite';
+import { box } from 'gumbox';
 
 export default box('worker build has no node runtime assumptions', async ({ pipeline, expect }) => {
 	const build = await pipeline.build();
@@ -853,7 +853,7 @@ passed" from "the target Vite runtime pipeline actually works."
 ### Performance Receipt
 
 ```ts
-import { box } from '@gumbox/vite';
+import { box } from 'gumbox';
 
 export default box('large route reload budget', async ({ browser, receipt, expect }) => {
 	const page = await browser.visit('/large-app');

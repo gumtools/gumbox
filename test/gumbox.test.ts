@@ -115,8 +115,10 @@ describe('gumbox runtime', () => {
 				'create, remove, and copy files',
 				'custom hot payload replaces the vite update protocol',
 				'env file edit reloads the dev server',
+				'environment fetch records response evidence',
 				'intentionally failing box',
 				'message updates without reload',
+				'response contentType mismatch fails',
 				'vite config edit restarts the dev server',
 			]);
 
@@ -536,6 +538,70 @@ describe('gumbox runtime', () => {
 			expect(await fileSystem.exists(path.join(root, 'dist', 'client', 'index.html'))).toBe(
 				true,
 			);
+		},
+		TEST_TIMEOUT_MS,
+	);
+
+	test(
+		'environment fetch returns structured response evidence and expect.response.matches asserts it',
+		async () => {
+			const root = await createFixtureProject();
+			const boxes = await selectBoxes(root, 'environment fetch records response evidence');
+			const result = await runBoxes({ root, boxes, fileSystem });
+
+			expect(result.status, result.boxes[0]?.error?.message).toBe('passed');
+
+			const receipt = JSON.parse(
+				await fileSystem.readTextFile(result.receiptPath),
+			) as ReceiptJson;
+			const boxReceipt = receipt.boxes[0]!;
+			expect(boxReceipt.status).toBe('passed');
+
+			// Every response assertion is recorded against the environment.
+			const responseAssertions = boxReceipt.assertions.filter(
+				(entry) => entry.name === 'response.matches',
+			);
+			expect(responseAssertions).toHaveLength(3);
+			expect(responseAssertions.every((entry) => entry.status === 'passed')).toBe(true);
+			expect(responseAssertions.every((entry) => entry.environment === 'client')).toBe(true);
+
+			// The receipt timeline records how each route was served.
+			const served = boxReceipt.timeline.filter(
+				(event) => event.type === 'response received',
+			);
+			expect(served.length).toBeGreaterThanOrEqual(3);
+			expect(
+				served.some(
+					(event) =>
+						event.path === '/src/style.css' &&
+						event.status === 200 &&
+						String(event.contentType).includes('text/css'),
+				),
+			).toBe(true);
+		},
+		TEST_TIMEOUT_MS,
+	);
+
+	test(
+		'expect.response.matches fails on a content-type mismatch with the served value',
+		async () => {
+			const root = await createFixtureProject();
+			const boxes = await selectBoxes(root, 'response contentType mismatch fails');
+			const result = await runBoxes({ root, boxes, fileSystem });
+
+			expect(result.status).toBe('failed');
+			const message = result.boxes[0]?.error?.message ?? '';
+			expect(message).toContain('text/css');
+			expect(message).toContain('text/html');
+
+			const receipt = JSON.parse(
+				await fileSystem.readTextFile(result.receiptPath),
+			) as ReceiptJson;
+			expect(
+				receipt.boxes[0]!.assertions.some(
+					(entry) => entry.name === 'response.matches' && entry.status === 'failed',
+				),
+			).toBe(true);
 		},
 		TEST_TIMEOUT_MS,
 	);

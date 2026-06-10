@@ -8,7 +8,8 @@
 
 ## Interpreted Outcome
 
-A working Gumbox implementation in this repo (`@gumbox/vite`) that follows the
+A working Gumbox implementation in this repo (npm package `gumbox`, renamed
+from `@gumbox/vite` by user directive 2026-06-10) that follows the
 specs in `specs/`, targeting the stated wedge: replacing brittle local smoke
 scripts (as exemplified by `/Users/jacksm5pro/dev/open-source/qwik-bundler/scripts/`)
 with boxes that run inside a real Vite pipeline and write receipts.

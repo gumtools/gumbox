@@ -147,7 +147,7 @@ describe('gumbox cli', () => {
 				invalidBoxFiles: Array<{ file: string; error: string }>;
 			};
 			expect(parsed.root).toBe(root);
-			expect(parsed.boxes).toHaveLength(8);
+			expect(parsed.boxes).toHaveLength(10);
 			const isolation = parsed.boxes.find((entry) => entry.file === 'isolation.box.ts')!;
 			expect(isolation.name).toBe('client edit stays out of the ssr graph');
 			expect(isolation.exportName).toBe('ClientEditIsolation');

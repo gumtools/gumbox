@@ -13,7 +13,7 @@ This package currently provides the Vite plugin foundation for Gumbox:
 
 ```ts
 import { defineConfig } from 'vite';
-import { gumbox } from '@gumbox/vite';
+import { gumbox } from 'gumbox';
 
 export default defineConfig({
 	plugins: [gumbox()],

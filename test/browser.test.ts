@@ -238,6 +238,76 @@ describe.skipIf(!availability.available)('gumbox browser evidence', () => {
 	);
 
 	test(
+		'page.click interactions become receipt evidence and drive attribute/text assertions',
+		async () => {
+			const root = await createFixtureProject();
+			const boxes = await selectBoxes(root, 'counter clicks update page state');
+			const result = await runBoxes({ root, boxes, fileSystem, browser: hostBrowser });
+
+			expect(result.status, result.boxes[0]?.error?.message).toBe('passed');
+
+			const receipt = await readReceipt(result.receiptPath);
+			const boxReceipt = receipt.boxes[0]!;
+			const page = boxReceipt.pages[0]! as PageEntry & {
+				interactions: Array<{ kind: string; selector: string; at: string }>;
+			};
+
+			// Every click is page evidence with its selector and timestamp.
+			expect(page.interactions).toHaveLength(2);
+			expect(page.interactions[0]).toMatchObject({ kind: 'click', selector: '#counter' });
+			expect(typeof page.interactions[0]!.at).toBe('string');
+
+			const assertionNames = boxReceipt.assertions.map((entry) => entry.name);
+			expect(assertionNames).toEqual(
+				expect.arrayContaining([
+					'page.attribute',
+					'page.noAttribute',
+					'page.containsText',
+					'page.notContainsText',
+					'page.noFailedRequests',
+				]),
+			);
+			expect(boxReceipt.assertions.every((entry) => entry.status === 'passed')).toBe(true);
+
+			const timelineTypes = boxReceipt.timeline.map((event) => event.type);
+			expect(timelineTypes).toContain('page click');
+		},
+		TEST_TIMEOUT_MS,
+	);
+
+	test(
+		'notContainsText and noFailedRequests are falsifiable',
+		async () => {
+			const root = await createFixtureProject();
+			const boxes = await selectBoxes(
+				root,
+				'notContainsText fails while the text is still present',
+				'noFailedRequests fails after a failed page request',
+			);
+			const result = await runBoxes({ root, boxes, fileSystem, browser: hostBrowser });
+
+			expect(result.status).toBe('failed');
+			expect(result.boxes[0]?.status).toBe('failed');
+			expect(result.boxes[0]?.error?.message).toContain('clicked 0 times');
+			expect(result.boxes[1]?.status).toBe('failed');
+			expect(result.boxes[1]?.error?.message).toContain('failed request');
+
+			const receipt = await readReceipt(result.receiptPath);
+			expect(
+				receipt.boxes[0]!.assertions.some(
+					(entry) => entry.name === 'page.notContainsText' && entry.status === 'failed',
+				),
+			).toBe(true);
+			expect(
+				receipt.boxes[1]!.assertions.some(
+					(entry) => entry.name === 'page.noFailedRequests' && entry.status === 'failed',
+				),
+			).toBe(true);
+		},
+		TEST_TIMEOUT_MS,
+	);
+
+	test(
 		'a page reload counts as a navigation and fails expect.page.noNavigations',
 		async () => {
 			const root = await createFixtureProject();

@@ -1,4 +1,4 @@
-import { box } from '@gumbox/vite';
+import { box } from 'gumbox';
 
 export const ClientEditIsolation = box(
 	{ name: 'client edit stays out of the ssr graph', tags: ['environments'] },

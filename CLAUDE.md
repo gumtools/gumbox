@@ -1,6 +1,6 @@
 # gumbox
 
-`@gumbox/vite` — boxes that run inside a real Vite pipeline and write receipts, replacing brittle
+`gumbox` — boxes that run inside a real Vite pipeline and write receipts, replacing brittle
 local smoke scripts. Specs in `specs/` are product truth.
 
 ## Workspace

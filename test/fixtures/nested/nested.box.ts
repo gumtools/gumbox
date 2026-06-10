@@ -1,4 +1,4 @@
-import { box } from '@gumbox/vite';
+import { box } from 'gumbox';
 
 // The Vite app lives in `app/`, not at the box root. This is the shape of a
 // repo whose fixtures are subdirectories (for example qwik-bundler): the box

@@ -39,11 +39,38 @@ export type BoxContext = {
 	receipt: ReceiptApi;
 };
 
+export type EnvironmentFetchInit = {
+	headers?: Record<string, string>;
+};
+
+/**
+ * Structured response evidence from `environment.<name>.fetch(path)`. Unlike
+ * `request(path)` it never throws on a non-OK status: status, content type,
+ * and headers are evidence a box asserts with `expect.response.matches`.
+ */
+export type EnvironmentResponse = {
+	readonly environment: string;
+	readonly path: string;
+	readonly url: string;
+	readonly status: number;
+	readonly ok: boolean;
+	/** Lowercased content-type header value, or null when absent. */
+	readonly contentType: string | null;
+	readonly headers: Record<string, string>;
+	readonly text: string;
+};
+
 export type EnvironmentHandle = {
 	readonly name: string;
 	readonly kind: 'browser' | 'server';
 	/** Fetch a path. Available for the browser environment (over HTTP) and fetchable environments. */
 	request(path: string): Promise<string>;
+	/**
+	 * Fetch a path and keep the full response as evidence (status, content
+	 * type, headers, body). Available for the browser environment (over HTTP)
+	 * and fetchable environments.
+	 */
+	fetch(path: string, init?: EnvironmentFetchInit): Promise<EnvironmentResponse>;
 	/** Import a module id through the environment's module runner. Runnable environments only. */
 	import<T = Record<string, unknown>>(id: string): Promise<T>;
 	/** Visit a route through a real browser. Browser-capable environments only. */
@@ -244,6 +271,28 @@ export type PageExpectApi = {
 		expected: string,
 		options?: ExpectWaitOptions,
 	): Promise<void>;
+	/** Waits until the page body text contains the given fragment. */
+	containsText(page: PageHandle, fragment: string, options?: ExpectWaitOptions): Promise<void>;
+	/** Waits until the page body text no longer contains the given fragment. */
+	notContainsText(page: PageHandle, fragment: string, options?: ExpectWaitOptions): Promise<void>;
+	/**
+	 * Waits until the selector's element carries the attribute (and, when
+	 * `expected` is given, until the attribute equals that value).
+	 */
+	attribute(
+		page: PageHandle,
+		selector: string,
+		attributeName: string,
+		expected?: string,
+		options?: ExpectWaitOptions,
+	): Promise<void>;
+	/** Waits until the selector's element exists without the attribute. */
+	noAttribute(
+		page: PageHandle,
+		selector: string,
+		attributeName: string,
+		options?: ExpectWaitOptions,
+	): Promise<void>;
 	/** Waits until the selector matches an element in the DOM. */
 	exists(page: PageHandle, selector: string, options?: ExpectWaitOptions): Promise<void>;
 	/** Waits until the selector matches a visible element. */
@@ -265,6 +314,18 @@ export type PageExpectApi = {
 	event(page: PageHandle, eventName: string, options?: PageEventExpectOptions): Promise<void>;
 	/** Asserts the page never navigated (no reloads) after the initial load. */
 	noNavigations(page: PageHandle): Promise<void>;
+	/** Asserts the page captured no failed network requests so far. */
+	noFailedRequests(page: PageHandle): Promise<void>;
+};
+
+/** What `expect.response.matches` checks against an environment response. */
+export type ResponseExpectation = {
+	status?: number;
+	ok?: boolean;
+	/** Substring match against the lowercased content-type header. */
+	contentType?: string;
+	/** Substring match against the response body. */
+	contains?: string;
 };
 
 export type ExpectApi = {
@@ -274,6 +335,10 @@ export type ExpectApi = {
 	page: PageExpectApi;
 	html: {
 		contains(html: string, fragment: string): Promise<void>;
+	};
+	response: {
+		/** Asserts status / content-type / body facts of an environment fetch. */
+		matches(response: EnvironmentResponse, expectation: ResponseExpectation): Promise<void>;
 	};
 	pipeline: {
 		serverRestarted(change: EditReceipt, options?: ExpectWaitOptions): Promise<void>;
