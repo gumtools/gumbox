@@ -2,7 +2,7 @@ import type { GumboxBrowser } from '../browser.ts';
 import { discoverBoxes } from '../discovery.ts';
 import type { GumboxFileSystem } from '../filesystem.ts';
 import { runBoxes } from '../runner.ts';
-import type { DiscoveredBox, InvalidBoxFile } from '../types.ts';
+import type { BoxRunResult, DiscoveredBox, InvalidBoxFile } from '../types.ts';
 import { resolveSelector } from './selector.ts';
 
 /** All boxes passed. */
@@ -269,6 +269,19 @@ async function runRunCommand(command: RunCommand, deps: CliDependencies): Promis
 		return EXIT_USAGE_OR_SETUP_ERROR;
 	}
 
+	// Human output streams each box result as it lands, so multi-box runs
+	// never look hung between groups; --json stays one machine-readable blob.
+	const reportBoxResult = (box: BoxRunResult): void => {
+		if (box.status === 'passed') {
+			deps.stdout(`pass ${box.name} (${box.file})`);
+			return;
+		}
+		deps.stdout(`fail ${box.name} (${box.file})`);
+		if (box.error !== null) {
+			deps.stdout(`     ${box.error.message}`);
+		}
+	};
+
 	const result = await runBoxes({
 		root,
 		boxes: selected,
@@ -277,6 +290,7 @@ async function runRunCommand(command: RunCommand, deps: CliDependencies): Promis
 		headless: !command.headed,
 		...(deps.browser === undefined ? {} : { browser: deps.browser }),
 		...(command.receiptDir === null ? {} : { receiptDir: command.receiptDir }),
+		...(command.json ? {} : { onBoxResult: reportBoxResult }),
 	});
 	const failedBoxes = result.boxes.filter((box) => box.status === 'failed');
 
@@ -306,16 +320,6 @@ async function runRunCommand(command: RunCommand, deps: CliDependencies): Promis
 		return failedBoxes.length === 0 ? EXIT_PASSED : EXIT_BOX_FAILURE;
 	}
 
-	for (const box of result.boxes) {
-		if (box.status === 'passed') {
-			deps.stdout(`pass ${box.name} (${box.file})`);
-			continue;
-		}
-		deps.stdout(`fail ${box.name} (${box.file})`);
-		if (box.error !== null) {
-			deps.stdout(`     ${box.error.message}`);
-		}
-	}
 	deps.stdout(
 		`${result.boxes.length - failedBoxes.length} passed, ${failedBoxes.length} failed (${result.boxes.length} boxes)`,
 	);

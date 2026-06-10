@@ -289,6 +289,35 @@ describe('gumbox runtime', () => {
 	);
 
 	test(
+		'streams each box result through onBoxResult as boxes finish',
+		async () => {
+			const root = await createFixtureProject();
+			const boxes = await selectBoxes(
+				root,
+				'create, remove, and copy files',
+				'intentionally failing box',
+			);
+
+			const streamed: Array<{ name: string; status: string }> = [];
+			const result = await runBoxes({
+				root,
+				boxes,
+				fileSystem,
+				onBoxResult: (box) => {
+					streamed.push({ name: box.name, status: box.status });
+				},
+			});
+
+			expect(streamed).toEqual([
+				{ name: 'create, remove, and copy files', status: 'passed' },
+				{ name: 'intentionally failing box', status: 'failed' },
+			]);
+			expect(result.status).toBe('failed');
+		},
+		TEST_TIMEOUT_MS,
+	);
+
+	test(
 		'correlates HMR evidence to edits when the dev root is a project subdirectory',
 		async () => {
 			const root = await createFixtureProject('nested');

@@ -443,6 +443,7 @@ export async function runBoxes(options: RunBoxesOptions): Promise<RunBoxesResult
 		);
 		results.push(result);
 		boxReceipts.push(receipt);
+		options.onBoxResult?.(result);
 	}
 	const failed = results.filter((result) => result.status === 'failed').length;
 	const status: 'passed' | 'failed' = failed === 0 ? 'passed' : 'failed';

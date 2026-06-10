@@ -568,6 +568,8 @@ export type RunBoxesOptions = {
 	browser?: GumboxBrowser;
 	/** Run browser sessions headlessly (default true). */
 	headless?: boolean;
+	/** Called with each box result as that box finishes, before the run summary. */
+	onBoxResult?(result: BoxRunResult): void;
 };
 
 export type RunBoxesResult = {
