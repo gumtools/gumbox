@@ -4,10 +4,10 @@ Gumbox library code must run anywhere Vite runs: Node, Deno, and Bun. The worksp
 Deno. Generated code must always pick the fastest, most portable tool available — native tooling
 with TypeScript APIs and the unjs ecosystem first.
 
-## Forbidden In `src/` And `test/`
+## Forbidden In Library And Ordinary Test Code
 
 - `node:path`, `node:url`, `node:os`, `node:events`, `node:util`, `node:http`, `node:crypto`,
-  `node:child_process`, `node:worker_threads`
+  `node:fs`, `node:fs/promises`, `node:child_process`, `node:worker_threads`
 - `process.*` (including `process.env`, `process.cwd`, `process.platform`)
 - `Deno.*` and `Bun.*` — the library must not be Deno-specific either
 - `require()`, `__dirname`, `__filename`
@@ -25,13 +25,19 @@ with TypeScript APIs and the unjs ecosystem first.
 | Hashing/object hash           | `ohash` or `globalThis.crypto` (Web Crypto)                    | `node:crypto`                    |
 | HTTP requests                 | global `fetch`                                                 | `node:http`, `axios`             |
 | Temp/scratch space in tests   | repo-local `.tmp/` directory (gitignored)                      | `node:os` `tmpdir()`             |
+| Filesystem access             | injected `GumboxFileSystem` from `src/filesystem.ts`           | direct runtime FS imports        |
 
-## Sole Exception: `node:fs/promises`
+## Filesystem Boundary
 
-There is no environment-agnostic filesystem package; `node:fs/promises` is the cross-runtime
-standard that Node, Deno, and Bun all implement. It is the only `node:` specifier allowed. Keep
-direct fs calls confined to the modules that genuinely need them; prefer higher-level tools
-(`tinyglobby` for traversal) where they exist.
+The library needs real filesystem access for project edits and receipts, but library code must not
+find runtime filesystem APIs itself. `src/filesystem.ts` exposes `GumboxFileSystem` plus
+`createFileSystem(runtime)`, and callers such as the CLI, adapters, and tests must inject that
+capability into `runBoxes()`.
+
+Only explicit host boundaries may adapt runtime filesystem APIs into `GumboxFileSystem`. In this
+repo, `test/support/host-file-system.ts` is the test-only host boundary because the Vite HMR tests
+need real files on disk. Keep that adapter small and do not import `node:fs`, `node:fs/promises`,
+or scatter direct filesystem access through `src/` or test bodies.
 
 ## Fast Native Tooling
 
@@ -46,8 +52,9 @@ direct fs calls confined to the modules that genuinely need them; prefer higher-
 
 - Run tasks with `deno task test`, `deno task build`, `deno task check`; install with
   `deno install`.
-- Do not add pnpm/npm-specific workflow steps, scripts, or lockfiles. `package.json` exists for npm
-  publishing metadata only.
+- Do not add pnpm/npm-specific workflow steps, scripts, lockfiles, or dependency sources.
+  `deno.json` is the canonical manifest; npm publishing requires a generated manifest or a
+  separate release path.
 - Never weaken the runtime-agnostic rules above because "the workspace is Deno" — workspace runtime
   and library portability are independent.
 

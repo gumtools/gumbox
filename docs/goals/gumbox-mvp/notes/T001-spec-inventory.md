@@ -1,5 +1,9 @@
 # T001 — Spec Required-Behavior Inventory
 
+> Superseded for implementation status by `T016-spec-coverage.md`.
+> This file remains the original requirements inventory from before the first
+> runtime slice was implemented.
+
 ## 1. REQUIRED PUBLIC API (box-authoring.md, product-direction.md)
 
 - Package: `@gumbox/vite`; primary export `box(name, run)` and `box(options, run)` overloads. `BoxOptions = { name, tags?, modes? ('dev'|'build'|'preview'|string), ui? }`. Default + named exports allowed from `*.box.ts(x)`.
@@ -49,6 +53,6 @@
 
 ## 6. CURRENT STATE GAP
 
-- `src/index.ts`: no-op plugin shell only. `test/index.test.ts`: one shape test.
-- `package.json`: `@gumbox/vite`, Vite 8.0.16 peer (aligned); no `bin`, no browser dep, single `.` export.
-- Net: ~0% implemented; package identity and Vite-8 pin are the only spec-aligned facts.
+- Stale intake snapshot: at T001 time, `src/index.ts` was only a no-op plugin
+  shell and implementation coverage was effectively 0%.
+- Current implementation coverage is tracked in `T016-spec-coverage.md`.

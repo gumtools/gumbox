@@ -8,7 +8,7 @@ not the place to make durable changes.
 Do not hand-edit generated outputs such as:
 
 - package build output: `dist/`
-- lockfiles: `deno.lock` (change dependencies via `package.json` + `deno install`)
+- lockfiles: `deno.lock` (change dependencies via `deno.json` + `deno install`)
 - gumbox runtime output: `.gumbox/receipts/`, `.gumbox/types/`
 - scratch space: `.tmp/`
 
@@ -20,7 +20,7 @@ truth rule.
 Run the narrowest generator or updater that owns the changed output:
 
 - Build output changes: `deno task build`.
-- Lockfile changes: `deno install` after editing `package.json`.
+- Lockfile changes: `deno install` after editing `deno.json`.
 - Receipt fixtures in tests: rerun the test that writes them; never hand-craft receipt JSON.
 
 ## Review Standard

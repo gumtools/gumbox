@@ -6,6 +6,7 @@ import { browserVisitError, createEnvironmentRuntime } from './environments.ts';
 import type { EnvironmentRuntime } from './environments.ts';
 import { connectHotWebSocket, createEvidencePlugin, EvidenceStore } from './evidence.ts';
 import { createExpectApi } from './expect.ts';
+import type { GumboxFileSystem } from './filesystem.ts';
 import { createProjectApi } from './project.ts';
 import { BoxRecorder, createRunDirectory, writeRunReceipt } from './receipt.ts';
 import type {
@@ -101,8 +102,9 @@ async function runSingleBox(args: {
 	root: string;
 	receiptPath: string;
 	assertionTimeoutMs: number;
+	fileSystem: GumboxFileSystem;
 }): Promise<{ result: BoxRunResult; receipt: Record<string, unknown> }> {
-	const { discovered, root, receiptPath, assertionTimeoutMs } = args;
+	const { discovered, root, receiptPath, assertionTimeoutMs, fileSystem } = args;
 	const definition = discovered.box;
 	const store = new EvidenceStore();
 	const recorder = new BoxRecorder(store);
@@ -110,6 +112,7 @@ async function runSingleBox(args: {
 
 	const projectRuntime = createProjectApi({
 		root,
+		fileSystem,
 		store,
 		onTimeline: (type, detail) => recorder.timeline(type, detail),
 	});
@@ -316,6 +319,7 @@ async function runSingleBox(args: {
  */
 export async function runBoxes(options: RunBoxesOptions): Promise<RunBoxesResult> {
 	const root = path.resolve(options.root);
+	const { fileSystem } = options;
 	let boxes = options.boxes;
 	let invalid: InvalidBoxFile[] = [];
 	if (boxes === undefined) {
@@ -323,7 +327,7 @@ export async function runBoxes(options: RunBoxesOptions): Promise<RunBoxesResult
 		boxes = discovery.boxes;
 		invalid = discovery.invalid;
 	}
-	const { runId, runDir, receiptPath } = await createRunDirectory(root);
+	const { runId, runDir, receiptPath } = await createRunDirectory(root, fileSystem);
 	const results: BoxRunResult[] = [];
 	const boxReceipts: Record<string, unknown>[] = [];
 	for (const discovered of boxes) {
@@ -332,6 +336,7 @@ export async function runBoxes(options: RunBoxesOptions): Promise<RunBoxesResult
 			root,
 			receiptPath,
 			assertionTimeoutMs: options.assertionTimeoutMs ?? DEFAULT_ASSERTION_TIMEOUT_MS,
+			fileSystem,
 		});
 		results.push(result);
 		boxReceipts.push(receipt);
@@ -353,6 +358,6 @@ export async function runBoxes(options: RunBoxesOptions): Promise<RunBoxesResult
 		invalidBoxFiles: invalid,
 		boxes: boxReceipts,
 	};
-	await writeRunReceipt(root, runId, receiptPath, receipt);
+	await writeRunReceipt(root, runId, receiptPath, receipt, fileSystem);
 	return { status, root, runId, runDir, receiptPath, boxes: results, invalid };
 }

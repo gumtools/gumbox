@@ -1,6 +1,6 @@
-import { access, readFile, writeFile } from 'node:fs/promises';
 import path from 'pathe';
 import type { EvidenceStore } from './evidence.ts';
+import type { GumboxFileSystem } from './filesystem.ts';
 import type { EditChange, EditReceipt, ProjectApi } from './types.ts';
 
 export type ProjectRuntime = {
@@ -12,10 +12,11 @@ export type ProjectRuntime = {
 
 export function createProjectApi(options: {
 	root: string;
+	fileSystem: GumboxFileSystem;
 	store: EvidenceStore;
 	onTimeline(type: string, detail: Record<string, unknown>): void;
 }): ProjectRuntime {
-	const { root, store, onTimeline } = options;
+	const { root, fileSystem, store, onTimeline } = options;
 	const edits: EditReceipt[] = [];
 	const originals = new Map<string, string>();
 
@@ -72,7 +73,7 @@ export function createProjectApi(options: {
 		const absolutePath = resolveProjectPath(relativePath);
 		let before: string;
 		try {
-			before = await readFile(absolutePath, 'utf8');
+			before = await fileSystem.readTextFile(absolutePath);
 		} catch {
 			throw new Error(
 				`project.edit('${relativePath}') failed: the file does not exist under ${root}.`,
@@ -90,7 +91,7 @@ export function createProjectApi(options: {
 		if (!originals.has(absolutePath)) {
 			originals.set(absolutePath, before);
 		}
-		await writeFile(absolutePath, after, 'utf8');
+		await fileSystem.writeTextFile(absolutePath, after);
 		const receipt: EditReceipt = {
 			id: `edit-${edits.length + 1}`,
 			file: path.relative(root, absolutePath).split(path.sep).join('/'),
@@ -108,16 +109,11 @@ export function createProjectApi(options: {
 	};
 
 	const read = async (relativePath: string): Promise<string> => {
-		return await readFile(resolveProjectPath(relativePath), 'utf8');
+		return await fileSystem.readTextFile(resolveProjectPath(relativePath));
 	};
 
 	const exists = async (relativePath: string): Promise<boolean> => {
-		try {
-			await access(resolveProjectPath(relativePath));
-			return true;
-		} catch {
-			return false;
-		}
+		return await fileSystem.exists(resolveProjectPath(relativePath));
 	};
 
 	const restoreAll = async (): Promise<{ failed: number }> => {
@@ -126,7 +122,7 @@ export function createProjectApi(options: {
 			const fileEdits = edits.filter((entry) => entry.absolutePath === absolutePath);
 			const relativeFile = path.relative(root, absolutePath).split(path.sep).join('/');
 			try {
-				await writeFile(absolutePath, original, 'utf8');
+				await fileSystem.writeTextFile(absolutePath, original);
 				for (const entry of fileEdits) {
 					entry.restored = true;
 				}

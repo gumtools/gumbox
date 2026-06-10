@@ -1,4 +1,5 @@
 import type { InlineConfig, ViteDevServer } from 'vite';
+import type { GumboxFileSystem } from './filesystem.ts';
 
 /**
  * Options accepted by `box(options, run)`.
@@ -216,6 +217,8 @@ export type RunBoxesOptions = {
 	boxes?: DiscoveredBox[];
 	/** Default bounded wait used by `expect.*` assertions. */
 	assertionTimeoutMs?: number;
+	/** Host filesystem capability used for project edits and receipt writes. */
+	fileSystem: GumboxFileSystem;
 };
 
 export type RunBoxesResult = {

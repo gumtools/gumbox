@@ -7,12 +7,14 @@ local smoke scripts. Specs in `specs/` are product truth.
 
 - Runtime/toolchain is **Deno**: `deno task test`, `deno task build`, `deno task check`,
   `deno install`. Do not use pnpm/npm commands.
-- `package.json` exists for npm publishing metadata only.
+- `deno.json` is the canonical workspace/package manifest. This repo has no `package.json`; npm
+  publishing requires a generated manifest or a separate release path.
 
 ## Hard Tooling Rules (see `.claude/rules/runtime-agnostic-tooling.md`)
 
-- Library and test code is runtime-agnostic: no `node:*` imports except `node:fs/promises`, no
-  `process.*`, no `Deno.*`/`Bun.*`.
+- Library and ordinary test code is runtime-agnostic: no `node:*` imports, no `process.*`, no
+  `Deno.*`/`Bun.*`. Filesystem access is an injected `GumboxFileSystem`; only explicit host
+  boundaries adapt runtime filesystem APIs.
 - Use `pathe` (paths), `ufo` (URLs), `mlly` (fileURLToPath/module utils), `std-env` (runtime
   detection), `tinyglobby` (globbing), global `fetch`.
 - AST work uses rolldown/oxc's native parser (`parseAst` from `rolldown` / `oxc-parser`) — never

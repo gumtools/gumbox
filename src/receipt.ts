@@ -1,7 +1,8 @@
-import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'pathe';
 import type { EvidenceStore } from './evidence.ts';
 import { classifyEditOutcome } from './evidence.ts';
+import type { GumboxFileSystem } from './filesystem.ts';
+import { isPathAlreadyExistsError } from './filesystem.ts';
 import type { AssertionRecord, EditReceipt, EnvironmentEditOutcome, Measurement } from './types.ts';
 
 export type TimelineEvent = { seq: number; at: string; type: string } & Record<string, unknown>;
@@ -219,17 +220,18 @@ export function runStamp(date = new Date()): string {
 
 export async function createRunDirectory(
 	root: string,
+	fileSystem: GumboxFileSystem,
 ): Promise<{ runId: string; runDir: string; receiptPath: string }> {
 	const receiptsDir = path.join(root, '.gumbox', 'receipts');
-	await mkdir(receiptsDir, { recursive: true });
+	await fileSystem.mkdir(receiptsDir, { recursive: true });
 	let runId = runStamp();
 	let runDir = path.join(receiptsDir, runId);
 	for (let attempt = 2; attempt < 100; attempt += 1) {
 		try {
-			await mkdir(runDir);
+			await fileSystem.mkdir(runDir);
 			return { runId, runDir, receiptPath: path.join(runDir, 'receipt.json') };
 		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
+			if (!isPathAlreadyExistsError(error)) {
 				throw error;
 			}
 			runId = `${runStamp()}-${attempt}`;
@@ -244,7 +246,8 @@ export async function writeRunReceipt(
 	runId: string,
 	receiptPath: string,
 	receipt: Record<string, unknown>,
+	fileSystem: GumboxFileSystem,
 ): Promise<void> {
-	await writeFile(receiptPath, `${JSON.stringify(receipt, null, '\t')}\n`, 'utf8');
-	await writeFile(path.join(root, '.gumbox', 'receipts', 'latest'), `${runId}\n`, 'utf8');
+	await fileSystem.writeTextFile(receiptPath, `${JSON.stringify(receipt, null, '\t')}\n`);
+	await fileSystem.writeTextFile(path.join(root, '.gumbox', 'receipts', 'latest'), `${runId}\n`);
 }

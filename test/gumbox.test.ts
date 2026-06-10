@@ -1,9 +1,9 @@
-import { cp, mkdir, mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
 import { fileURLToPath } from 'mlly';
 import path from 'pathe';
 import { afterEach, describe, expect, test } from 'vitest';
 import { discoverBoxes, runBoxes } from '../src/index.ts';
 import type { DiscoveredBox } from '../src/index.ts';
+import { fileSystem } from './support/host-file-system.ts';
 
 const FIXTURE_SOURCE = fileURLToPath(new URL('./fixtures/basic', import.meta.url));
 // Repo-local scratch space (gitignored) instead of os.tmpdir(), per the
@@ -50,13 +50,16 @@ type ReceiptJson = {
 const temporaryRoots: string[] = [];
 
 async function createFixtureProject(): Promise<string> {
-	await mkdir(TMP_ROOT, { recursive: true });
-	const base = await mkdtemp(path.join(TMP_ROOT, 'gumbox-basic-'));
+	await fileSystem.mkdir(TMP_ROOT, { recursive: true });
+	const base = await fileSystem.makeTempDirectory({
+		dir: TMP_ROOT,
+		prefix: 'gumbox-basic-',
+	});
 	// realpath so watcher file events match the configured Vite root in case
 	// any segment of the repo path sits behind a symlink.
-	const root = await realpath(base);
+	const root = await fileSystem.realPath(base);
 	temporaryRoots.push(root);
-	await cp(FIXTURE_SOURCE, root, { recursive: true });
+	await fileSystem.copyDirectory(FIXTURE_SOURCE, root);
 	return root;
 }
 
@@ -69,7 +72,9 @@ async function selectBoxes(root: string, name: string): Promise<DiscoveredBox[]>
 
 afterEach(async () => {
 	await Promise.all(
-		temporaryRoots.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
+		temporaryRoots
+			.splice(0)
+			.map((dir) => fileSystem.remove(dir, { recursive: true, force: true })),
 	);
 });
 
@@ -108,17 +113,19 @@ describe('gumbox runtime', () => {
 		async () => {
 			const root = await createFixtureProject();
 			const boxes = await selectBoxes(root, 'message updates without reload');
-			const result = await runBoxes({ root, boxes });
+			const result = await runBoxes({ root, boxes, fileSystem });
 
-			expect(result.status).toBe('passed');
+			expect(result.status, result.boxes[0]?.error?.message).toBe('passed');
 
 			const latest = (
-				await readFile(path.join(root, '.gumbox', 'receipts', 'latest'), 'utf8')
+				await fileSystem.readTextFile(path.join(root, '.gumbox', 'receipts', 'latest'))
 			).trim();
 			expect(latest).toBe(result.runId);
 			expect(path.basename(result.runDir)).toBe(result.runId);
 
-			const receipt = JSON.parse(await readFile(result.receiptPath, 'utf8')) as ReceiptJson;
+			const receipt = JSON.parse(
+				await fileSystem.readTextFile(result.receiptPath),
+			) as ReceiptJson;
 			expect(receipt.gumboxReceipt).toBe(1);
 			expect(receipt.summary.status).toBe('passed');
 
@@ -164,7 +171,9 @@ describe('gumbox runtime', () => {
 			expect(boxReceipt.measurements[0]?.label).toBe('prime client module graph');
 			expect(boxReceipt.notes.some((note) => note.includes('primed'))).toBe(true);
 
-			const restoredFile = await readFile(path.join(root, 'src', 'message.ts'), 'utf8');
+			const restoredFile = await fileSystem.readTextFile(
+				path.join(root, 'src', 'message.ts'),
+			);
 			expect(restoredFile).toContain("'before edit'");
 		},
 		TEST_TIMEOUT_MS,
@@ -175,11 +184,13 @@ describe('gumbox runtime', () => {
 		async () => {
 			const root = await createFixtureProject();
 			const boxes = await selectBoxes(root, 'client edit stays out of the ssr graph');
-			const result = await runBoxes({ root, boxes });
+			const result = await runBoxes({ root, boxes, fileSystem });
 
-			expect(result.status).toBe('passed');
+			expect(result.status, result.boxes[0]?.error?.message).toBe('passed');
 
-			const receipt = JSON.parse(await readFile(result.receiptPath, 'utf8')) as ReceiptJson;
+			const receipt = JSON.parse(
+				await fileSystem.readTextFile(result.receiptPath),
+			) as ReceiptJson;
 			const boxReceipt = receipt.boxes[0]!;
 			expect(boxReceipt.status).toBe('passed');
 
@@ -207,14 +218,16 @@ describe('gumbox runtime', () => {
 		async () => {
 			const root = await createFixtureProject();
 			const boxes = await selectBoxes(root, 'intentionally failing box');
-			const result = await runBoxes({ root, boxes });
+			const result = await runBoxes({ root, boxes, fileSystem });
 
 			expect(result.status).toBe('failed');
 			expect(result.boxes[0]?.status).toBe('failed');
 			expect(result.boxes[0]?.error?.message).toContain('intentional failure');
 
 			// The receipt is still written for failed runs.
-			const receipt = JSON.parse(await readFile(result.receiptPath, 'utf8')) as ReceiptJson;
+			const receipt = JSON.parse(
+				await fileSystem.readTextFile(result.receiptPath),
+			) as ReceiptJson;
 			expect(receipt.gumboxReceipt).toBe(1);
 			expect(receipt.summary.status).toBe('failed');
 			const boxReceipt = receipt.boxes[0]!;
@@ -223,7 +236,9 @@ describe('gumbox runtime', () => {
 			expect(boxReceipt.edits[0]!.restored).toBe(true);
 			expect(boxReceipt.summary.restorationFailed).toBe(false);
 
-			const restoredFile = await readFile(path.join(root, 'src', 'message.ts'), 'utf8');
+			const restoredFile = await fileSystem.readTextFile(
+				path.join(root, 'src', 'message.ts'),
+			);
 			expect(restoredFile).toContain("'before edit'");
 			expect(restoredFile).not.toContain('broken edit');
 		},

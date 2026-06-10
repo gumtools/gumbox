@@ -42,15 +42,16 @@ with boxes that run inside a real Vite pipeline and write receipts.
 User directive, supersedes the earlier "keep pnpm toolchain" constraint:
 
 - **Runtime-agnostic library.** Never import `node:path`, `node:url`,
-  `node:os`, `node:events`, `node:util`, or touch `process.*` in `src/` or
-  `test/`. Use environment-agnostic packages instead: `pathe` (paths), `ufo`
-  (URLs), `mlly` (module/url utils such as `fileURLToPath`), `std-env`
-  (env/runtime detection), `tinyglobby` (file discovery). The library must
-  not contain Deno-specific code either (`Deno.*` is equally forbidden).
-- **Filesystem exception.** `node:fs/promises` has no environment-agnostic
-  replacement and is implemented by Node, Deno, and Bun alike; it is the only
-  `node:` specifier permitted, and direct use should stay confined to the
-  modules that genuinely need it.
+  `node:os`, `node:events`, `node:util`, `node:fs`, or touch `process.*` in
+  library and ordinary test code. Use environment-agnostic packages instead:
+  `pathe` (paths), `ufo` (URLs), `mlly` (module/url utils such as
+  `fileURLToPath`), `std-env` (env/runtime detection), `tinyglobby` (file
+  discovery). The library must not contain Deno-specific code either
+  (`Deno.*` is equally forbidden).
+- **Filesystem boundary.** Real project edits and receipts use an injected
+  `GumboxFileSystem`. The library must not auto-discover runtime filesystem
+  APIs; host entrypoints and test support adapt their runtime capability into
+  the interface.
 - **Deno workspace.** The workspace runtime/toolchain is Deno (`deno task`,
   `deno install`), replacing pnpm. `package.json` stays for npm publishing
   metadata. Verify commands across the board change from `pnpm ...` to
@@ -67,4 +68,4 @@ Discover the spec surface and fixture patterns, then complete successive safe
 verified work packages until: the core runtime (box discovery, execution
 against a real Vite pipeline, receipt writing) and the CLI entry path work
 end-to-end for at least one canonical scenario class drawn from the
-qwik-bundler scripts, verified by `pnpm test`.
+qwik-bundler scripts, verified by `deno task test`.

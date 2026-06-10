@@ -2,9 +2,15 @@ import type { Plugin } from 'vite';
 
 export { box, isBoxDefinition } from './box.ts';
 export { discoverBoxes } from './discovery.ts';
+export { createFileSystem } from './filesystem.ts';
 export { runBoxes } from './runner.ts';
 export { GumboxAssertionError } from './expect.ts';
 export { GumboxTimeoutError } from './evidence.ts';
+export type {
+	FileSystemDirectoryEntry,
+	GumboxFileSystem,
+	GumboxFileSystemRuntime,
+} from './filesystem.ts';
 export type {
 	EvidenceEvent,
 	HotPayloadEvidence,
