@@ -20,6 +20,7 @@
 	},
 	"tasks": {
 		"test": "deno run -A npm:vitest@4.1.5",
+		"dev": "deno run -A npm:vitest@4.1.5 watch",
 		"test:watch": "deno run -A npm:vitest@4.1.5 watch",
 		"build": "deno run -A npm:tsdown@0.22.2 ./src/index.ts ./src/cli/gumbox.ts --format esm --dts --clean --external mitt --external mlly --external pathe --external playwright-core --external tinyglobby --external vite --out-dir dist --target node22.0.0",
 		"cli": "deno run -A ./src/cli/gumbox.ts",
