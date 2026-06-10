@@ -19,6 +19,7 @@ type DenoRuntimeLike = {
 	cwd?(): string;
 	exitCode?: number;
 	exit?(code?: number): never;
+	addSignalListener?(signal: 'SIGINT', handler: () => void): void;
 	readTextFile(filePath: string): Promise<string>;
 	writeTextFile(filePath: string, data: string): Promise<void>;
 	mkdir(filePath: string, options?: { recursive?: boolean }): Promise<void>;
@@ -37,6 +38,7 @@ type HostProcessLike = {
 	exitCode?: number | string | null | undefined;
 	exit?(code?: number): never;
 	stdout?: { write(chunk: string, callback?: () => void): boolean };
+	on?(event: 'SIGINT', listener: () => void): unknown;
 };
 
 type NodeDirectoryEntryLike = {
@@ -150,6 +152,21 @@ export function getHostWorkingDirectory(): string {
 		return cwd();
 	}
 	throw new Error('gumbox could not determine the working directory on this runtime.');
+}
+
+/**
+ * Subscribes to the host interrupt signal (Ctrl-C). Registering a listener
+ * replaces the runtime's default exit-on-interrupt, so the handler must end
+ * the process itself. No-op on runtimes without a signal API. Deno is
+ * preferred over the node-compat `process` so the handler registers once.
+ */
+export function onHostInterrupt(handler: () => void): void {
+	const denoRuntime = globalDeno();
+	if (denoRuntime?.addSignalListener !== undefined) {
+		denoRuntime.addSignalListener('SIGINT', handler);
+		return;
+	}
+	globalProcess()?.on?.('SIGINT', handler);
 }
 
 /**

@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'mlly';
 import path from 'pathe';
 import { afterEach, describe, expect, test } from 'vitest';
-import { discoverBoxes, runBoxes } from '../src/index.ts';
+import { discoverBoxes, restorePendingEdits, runBoxes } from '../src/index.ts';
 import type { DiscoveredBox } from '../src/index.ts';
 import { orderBoxesForRun } from '../src/runner.ts';
 import { withUnsetNodeEnv } from './support/host-env.ts';
@@ -290,32 +290,51 @@ describe('gumbox runtime', () => {
 	);
 
 	test(
-		'orders dev-mode boxes before build/preview boxes in one run',
-		() => {
-			const make = (name: string, modes: string[]): DiscoveredBox => ({
-				file: `/project/${name}.box.ts`,
-				relativeFile: `${name}.box.ts`,
-				exportName: 'default',
-				box: { name, tags: [], modes, ui: false, run: async () => {} },
-			});
+		'restorePendingEdits restores edits of boxes that never finished',
+		async () => {
+			const root = await createFixtureProject('interrupt');
+			const boxes = await selectBoxes(root, 'hangs after editing');
+			const dataFile = path.join(root, 'data.txt');
 
-			// A production build in the same process must not run before a dev
-			// box: build-then-dev of the same fixture poisons the dev pipeline.
-			const ordered = orderBoxesForRun([
-				make('a-build-scan', ['build']),
-				make('b-dev-hmr', ['dev']),
-				make('c-preview-parity', ['preview']),
-				make('d-dev-route', ['dev']),
-			]);
+			// Intentionally not awaited: the box hangs forever, standing in for
+			// a run killed by the operator before restoration could happen.
+			void runBoxes({ root, boxes, fileSystem });
 
-			expect(ordered.map((entry) => entry.box.name)).toEqual([
-				'b-dev-hmr',
-				'd-dev-route',
-				'a-build-scan',
-				'c-preview-parity',
-			]);
+			await expect
+				.poll(async () => fileSystem.readTextFile(dataFile))
+				.toContain('edited contents');
+
+			await restorePendingEdits();
+
+			expect(await fileSystem.readTextFile(dataFile)).toContain('original contents');
 		},
+		TEST_TIMEOUT_MS,
 	);
+
+	test('orders dev-mode boxes before build/preview boxes in one run', () => {
+		const make = (name: string, modes: string[]): DiscoveredBox => ({
+			file: `/project/${name}.box.ts`,
+			relativeFile: `${name}.box.ts`,
+			exportName: 'default',
+			box: { name, tags: [], modes, ui: false, run: async () => {} },
+		});
+
+		// A production build in the same process must not run before a dev
+		// box: build-then-dev of the same fixture poisons the dev pipeline.
+		const ordered = orderBoxesForRun([
+			make('a-build-scan', ['build']),
+			make('b-dev-hmr', ['dev']),
+			make('c-preview-parity', ['preview']),
+			make('d-dev-route', ['dev']),
+		]);
+
+		expect(ordered.map((entry) => entry.box.name)).toEqual([
+			'b-dev-hmr',
+			'd-dev-route',
+			'a-build-scan',
+			'c-preview-parity',
+		]);
+	});
 
 	test(
 		'streams each box result through onBoxResult as boxes finish',

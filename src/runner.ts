@@ -152,6 +152,8 @@ async function runSingleBox(args: {
 		onTimeline: (type, detail) => recorder.timeline(type, detail),
 	});
 	recorder.edits = projectRuntime.edits;
+	const restoreThisBox = (): Promise<{ failed: number }> => projectRuntime.restoreAll();
+	pendingEditRestores.add(restoreThisBox);
 
 	const pipeline: PipelineApi = {
 		dev: async (devOptions): Promise<DevServerHandle> => {
@@ -379,6 +381,7 @@ async function runSingleBox(args: {
 		// Vite reaction (a config restore would otherwise restart the server
 		// while the box is tearing down).
 		await projectRuntime.restoreAll();
+		pendingEditRestores.delete(restoreThisBox);
 	}
 	recorder.finish(status);
 	const receipt = recorder.buildBoxReceipt({
@@ -400,6 +403,26 @@ async function runSingleBox(args: {
 		},
 		receipt,
 	};
+}
+
+/**
+ * Project runtimes of boxes that are still running. An interrupted run never
+ * reaches the per-box restoration in runSingleBox's finally, which would
+ * strand box edits on disk; the CLI host calls restorePendingEdits() from
+ * its interrupt handler instead.
+ */
+const pendingEditRestores = new Set<() => Promise<{ failed: number }>>();
+
+/**
+ * Emergency restoration for interrupted runs: restores every project edit
+ * belonging to boxes that have not finished. Safe to call at any time —
+ * boxes that restored normally are no longer registered, and restoring the
+ * same box twice is a no-op.
+ */
+export async function restorePendingEdits(): Promise<void> {
+	for (const restore of [...pendingEditRestores]) {
+		await restore().catch(() => undefined);
+	}
 }
 
 /**
