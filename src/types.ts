@@ -298,6 +298,10 @@ export type RunBoxesOptions = {
 	root: string;
 	/** Run a pre-selected set instead of discovering every `*.box.ts(x)` file. */
 	boxes?: DiscoveredBox[];
+	/** Invalid box files to record in the receipt when `boxes` is pre-selected. */
+	invalid?: InvalidBoxFile[];
+	/** Receipt directory, absolute or relative to root. Default `.gumbox/receipts`. */
+	receiptDir?: string;
 	/** Default bounded wait used by `expect.*` assertions. */
 	assertionTimeoutMs?: number;
 	/** Host filesystem capability used for project edits and receipt writes. */

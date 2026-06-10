@@ -254,15 +254,16 @@ export function runStamp(date = new Date()): string {
 export async function createRunDirectory(
 	root: string,
 	fileSystem: GumboxFileSystem,
-): Promise<{ runId: string; runDir: string; receiptPath: string }> {
-	const receiptsDir = path.join(root, '.gumbox', 'receipts');
+	receiptDir?: string,
+): Promise<{ runId: string; runDir: string; receiptPath: string; receiptsDir: string }> {
+	const receiptsDir = path.resolve(root, receiptDir ?? path.join('.gumbox', 'receipts'));
 	await fileSystem.mkdir(receiptsDir, { recursive: true });
 	let runId = runStamp();
 	let runDir = path.join(receiptsDir, runId);
 	for (let attempt = 2; attempt < 100; attempt += 1) {
 		try {
 			await fileSystem.mkdir(runDir);
-			return { runId, runDir, receiptPath: path.join(runDir, 'receipt.json') };
+			return { runId, runDir, receiptPath: path.join(runDir, 'receipt.json'), receiptsDir };
 		} catch (error) {
 			if (!isPathAlreadyExistsError(error)) {
 				throw error;
@@ -275,12 +276,12 @@ export async function createRunDirectory(
 }
 
 export async function writeRunReceipt(
-	root: string,
+	receiptsDir: string,
 	runId: string,
 	receiptPath: string,
 	receipt: Record<string, unknown>,
 	fileSystem: GumboxFileSystem,
 ): Promise<void> {
 	await fileSystem.writeTextFile(receiptPath, `${JSON.stringify(receipt, null, '\t')}\n`);
-	await fileSystem.writeTextFile(path.join(root, '.gumbox', 'receipts', 'latest'), `${runId}\n`);
+	await fileSystem.writeTextFile(path.join(receiptsDir, 'latest'), `${runId}\n`);
 }

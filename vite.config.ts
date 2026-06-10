@@ -11,6 +11,7 @@ export default {
 	pack: {
 		entry: {
 			index: './src/index.ts',
+			gumbox: './src/cli/gumbox.ts',
 		},
 		format: ['esm'],
 		dts: true,

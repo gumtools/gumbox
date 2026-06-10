@@ -336,13 +336,17 @@ export async function runBoxes(options: RunBoxesOptions): Promise<RunBoxesResult
 	const root = path.resolve(options.root);
 	const { fileSystem } = options;
 	let boxes = options.boxes;
-	let invalid: InvalidBoxFile[] = [];
+	let invalid: InvalidBoxFile[] = options.invalid ?? [];
 	if (boxes === undefined) {
 		const discovery = await discoverBoxes({ root });
 		boxes = discovery.boxes;
 		invalid = discovery.invalid;
 	}
-	const { runId, runDir, receiptPath } = await createRunDirectory(root, fileSystem);
+	const { runId, runDir, receiptPath, receiptsDir } = await createRunDirectory(
+		root,
+		fileSystem,
+		options.receiptDir,
+	);
 	const results: BoxRunResult[] = [];
 	const boxReceipts: Record<string, unknown>[] = [];
 	for (const discovered of boxes) {
@@ -373,6 +377,6 @@ export async function runBoxes(options: RunBoxesOptions): Promise<RunBoxesResult
 		invalidBoxFiles: invalid,
 		boxes: boxReceipts,
 	};
-	await writeRunReceipt(root, runId, receiptPath, receipt, fileSystem);
+	await writeRunReceipt(receiptsDir, runId, receiptPath, receipt, fileSystem);
 	return { status, root, runId, runDir, receiptPath, boxes: results, invalid };
 }

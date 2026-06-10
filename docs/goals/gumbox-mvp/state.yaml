@@ -350,7 +350,7 @@ tasks:
   - id: T006
     type: worker
     assignee: Worker
-    status: active
+    status: done
     objective: "Slice 3: CLI entry — bin wiring, gumbox [selector] / run / list, selector matching (path, glob, name, basename, tag), CI headless default, --ui/--headed/--watch where feasible, --json, --receipt-dir, exit codes 0/1/2, receipt path printed on failure. Completes the tranche oracle."
     inputs:
       - specs/cli.md
@@ -375,15 +375,49 @@ tasks:
       - "CLI slice seems to require a browser dependency (slice 4) — implement headless paths only and record the gap."
       - "Tests only pass with blind sleeps instead of event-driven waits."
       - "Verification fails twice."
-    receipt: null
+    receipt:
+      result: done
+      changed_files: ["src/cli/{run-cli,selector,host,gumbox}.ts", src/types.ts, src/receipt.ts, src/runner.ts, test/cli.test.ts, test/support/host-file-system.ts, deno.json, vite.config.ts]
+      commands:
+        - { cmd: "deno task test", status: pass, detail: "26/26 (17 new CLI tests, TDD-first); PM re-verified independently" }
+        - { cmd: "deno task build", status: pass, detail: "dist/index.mjs + dist/cli/gumbox.mjs with shebang+exec bit; PM re-verified" }
+        - { cmd: "deno task check", status: pass, detail: "PM re-verified independently" }
+      summary: "CLI slice done: gumbox [selector]/run/list, Vitest-style selectors (path/glob/name/basename/tag), --json, --receipt-dir, --mode, exit codes 0/1/2 per T003, receipt path printed on every run. Pure runCli(args, deps) core; src/cli/host.ts is the host boundary (argv/cwd/exit/fs via globalThis detection); thin bin shim. Fixed real exit-code bug: Deno node-compat process.exitCode silently overrides Deno.exitCode once vite loads — shim sets both. Later-slice commands/flags (open, types, preview, replay, doctor, --ui/--headed/--watch, init/migrate) exit 2 with clear not-implemented messages."
+      notes:
+        - "bin wiring: deno.json exports './cli'; npm publishing needs the T014 generated-manifest path with bin: { gumbox: 'dist/cli/gumbox.mjs' }."
+        - "policy decision: invalid box files print stderr errors; exit 2 only when zero boxes matched; box failures (exit 1) dominate otherwise."
+        - "FOR USER: .claude/rules/runtime-agnostic-tooling.md 'Filesystem Boundary' wording is now stale — src/cli/host.ts is the single host boundary and test/support/host-file-system.ts delegates to it; PM edit was denied by permission classifier (self-modification guard)."
+      conflicts:
+        - "specs/cli.md interactive no-selector UI open → slice 5; list/run typegen refresh → slice 6; --json compact summary carries status/receiptPath/runId/counts/failure, not the full route/implicated-files detail (that lives in the written receipt)."
   - id: T007
     type: worker
     assignee: Worker
-    status: queued
+    status: active
     objective: "Slice 4: browser and preview evidence — browser/environment.client.visit() against the real Vite app route, expect.page.*, screenshots + DOM/HTML snapshots + console/network capture into receipts, pipeline.preview(build) via Vite preview(), preview.browser.visit, and the gumbox preview CLI execution path with browser-alias-target recording."
-    allowed_files: []
-    verify: []
-    stop_if: []
+    inputs:
+      - specs/box-authoring.md
+      - specs/scenarios-and-receipts.md
+      - specs/cli.md
+      - src/runner.ts
+      - src/environments.ts
+      - src/evidence.ts
+    allowed_files:
+      - "src/**"
+      - "test/**"
+      - "deno.json"
+      - "deno.lock"
+      - "vite.config.ts"
+      - "tsconfig.json"
+      - "docs/goals/gumbox-mvp/notes/T007-*.md"
+    verify:
+      - "deno task test"
+      - "deno task build"
+      - "deno task check"
+    stop_if:
+      - "Any change needed outside this repo."
+      - "Browser automation cannot run in this environment after two distinct attempts — implement preview() evidence without browser, record exact blocker, return partial."
+      - "Tests only pass with blind sleeps instead of event-driven waits."
+      - "Verification fails twice."
     receipt: null
   - id: T008
     type: worker

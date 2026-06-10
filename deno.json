@@ -1,7 +1,10 @@
 {
 	"name": "@gumbox/vite",
 	"version": "0.0.0",
-	"exports": "./src/index.ts",
+	"exports": {
+		".": "./src/index.ts",
+		"./cli": "./src/cli/gumbox.ts"
+	},
 	"nodeModulesDir": "auto",
 	"imports": {
 		"mitt": "npm:mitt@^3.0.1",
@@ -17,10 +20,11 @@
 	"tasks": {
 		"test": "deno run -A npm:vitest@4.1.5",
 		"test:watch": "deno run -A npm:vitest@4.1.5 watch",
-		"build": "deno run -A npm:tsdown@0.22.2 ./src/index.ts --format esm --dts --clean --external mitt --external mlly --external pathe --external tinyglobby --external vite --out-dir dist --target node22.0.0",
+		"build": "deno run -A npm:tsdown@0.22.2 ./src/index.ts ./src/cli/gumbox.ts --format esm --dts --clean --external mitt --external mlly --external pathe --external tinyglobby --external vite --out-dir dist --target node22.0.0",
+		"cli": "deno run -A ./src/cli/gumbox.ts",
 		"fmt": "VP_VERSION=0.1.20 deno run -A npm:oxfmt@0.46.0 --write --config vite.config.ts .",
 		"fmt:check": "VP_VERSION=0.1.20 deno run -A npm:oxfmt@0.46.0 --check --config vite.config.ts .",
-		"lint": "VP_VERSION=0.1.20 deno run -A npm:oxlint@1.61.0 --config vite.config.ts src test/gumbox.test.ts test/index.test.ts test/support/host-file-system.ts vite.config.ts",
+		"lint": "VP_VERSION=0.1.20 deno run -A npm:oxlint@1.61.0 --config vite.config.ts src test/cli.test.ts test/gumbox.test.ts test/index.test.ts test/support/host-file-system.ts vite.config.ts",
 		"typecheck": "tsc --noEmit",
 		"check": "deno task fmt:check && deno task lint && deno task typecheck"
 	}
