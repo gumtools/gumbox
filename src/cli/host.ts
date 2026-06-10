@@ -37,8 +37,9 @@ type HostProcessLike = {
 	cwd?(): string;
 	exitCode?: number | string | null | undefined;
 	exit?(code?: number): never;
-	stdout?: { write(chunk: string, callback?: () => void): boolean };
+	stdout?: { write(chunk: string, callback?: () => void): boolean; isTTY?: boolean };
 	on?(event: 'SIGINT', listener: () => void): unknown;
+	env?: Record<string, string | undefined>;
 };
 
 type NodeDirectoryEntryLike = {
@@ -152,6 +153,31 @@ export function getHostWorkingDirectory(): string {
 		return cwd();
 	}
 	throw new Error('gumbox could not determine the working directory on this runtime.');
+}
+
+function readHostEnv(name: string): string | undefined {
+	try {
+		// Property access can throw under Deno without env permission.
+		return globalProcess()?.env?.[name];
+	} catch {
+		return undefined;
+	}
+}
+
+/**
+ * True when human CLI output should use ANSI colors: an interactive stdout
+ * with no opt-out. `FORCE_COLOR` overrides everything, `NO_COLOR` and
+ * `TERM=dumb` disable, otherwise the stdout TTY decides.
+ */
+export function hostSupportsColor(): boolean {
+	const forceColor = readHostEnv('FORCE_COLOR');
+	if (forceColor !== undefined && forceColor !== '' && forceColor !== '0') {
+		return true;
+	}
+	if (readHostEnv('NO_COLOR') !== undefined || readHostEnv('TERM') === 'dumb') {
+		return false;
+	}
+	return globalProcess()?.stdout?.isTTY === true;
 }
 
 /**

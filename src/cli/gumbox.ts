@@ -10,8 +10,9 @@ import {
 	exitHost,
 	getHostCommandLineArgs,
 	getHostWorkingDirectory,
+	hostSupportsColor,
+	onHostInterrupt,
 } from './host.ts';
-import { onHostInterrupt } from './host.ts';
 import { runCli } from './run-cli.ts';
 
 // Ctrl-C must not strand box edits on disk: restore everything still pending,
@@ -27,6 +28,7 @@ const exitCode = await runCli(getHostCommandLineArgs(), {
 	browser: createHostBrowser(),
 	stdout: (line) => console.log(line),
 	stderr: (line) => console.error(line),
+	colors: hostSupportsColor(),
 });
 // Force the exit: fixture pipelines may leak open handles past server.close().
 await exitHost(exitCode);

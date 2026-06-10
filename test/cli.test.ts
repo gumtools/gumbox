@@ -29,7 +29,11 @@ async function createFixtureProject(fixture = 'basic'): Promise<string> {
 
 type CliRun = { code: number; stdout: string; stderr: string };
 
-async function execCli(args: string[], cwd: string): Promise<CliRun> {
+async function execCli(
+	args: string[],
+	cwd: string,
+	options?: { colors?: boolean },
+): Promise<CliRun> {
 	const stdoutLines: string[] = [];
 	const stderrLines: string[] = [];
 	const code = await runCli(args, {
@@ -37,6 +41,7 @@ async function execCli(args: string[], cwd: string): Promise<CliRun> {
 		fileSystem,
 		stdout: (line) => stdoutLines.push(line),
 		stderr: (line) => stderrLines.push(line),
+		...(options?.colors === undefined ? {} : { colors: options.colors }),
 	});
 	return { code, stdout: stdoutLines.join('\n'), stderr: stderrLines.join('\n') };
 }
@@ -155,6 +160,33 @@ describe('gumbox cli', () => {
 			expect(isolation.modes).toEqual(['dev']);
 			expect(parsed.invalidBoxFiles).toHaveLength(1);
 			expect(parsed.invalidBoxFiles[0]!.file).toBe('invalid.box.ts');
+		},
+		TEST_TIMEOUT_MS,
+	);
+
+	test(
+		'colors pass/fail tokens and summary counts when the host supports color',
+		async () => {
+			const root = await createFixtureProject();
+
+			const passing = await execCli(['create, remove, and copy files'], root, {
+				colors: true,
+			});
+			expect(passing.code).toBe(0);
+			expect(passing.stdout).toContain(
+				'\u001b[32mpass\u001b[39m create, remove, and copy files',
+			);
+			expect(passing.stdout).toContain('\u001b[32m1 passed\u001b[39m, 0 failed (1 boxes)');
+
+			const failing = await execCli(['intentionally failing box'], root, { colors: true });
+			expect(failing.code).toBe(1);
+			expect(failing.stdout).toContain('\u001b[31mfail\u001b[39m intentionally failing box');
+			expect(failing.stdout).toContain('\u001b[31m1 failed\u001b[39m (1 boxes)');
+
+			// Colors stay off by default so piped output remains plain text.
+			const plain = await execCli(['create, remove, and copy files'], root);
+			expect(plain.stdout).toContain('pass create, remove, and copy files');
+			expect(plain.stdout).not.toContain('\u001b[');
 		},
 		TEST_TIMEOUT_MS,
 	);

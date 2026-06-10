@@ -24,6 +24,27 @@ export type CliDependencies = {
 	browser?: GumboxBrowser;
 	stdout(line: string): void;
 	stderr(line: string): void;
+	/** ANSI-color human output (default false; the bin shim detects the TTY). */
+	colors?: boolean;
+};
+
+/** Semantic text colors for human CLI output. */
+type Palette = {
+	green(text: string): string;
+	red(text: string): string;
+	dim(text: string): string;
+};
+
+const ANSI_PALETTE: Palette = {
+	green: (text) => `\u001b[32m${text}\u001b[39m`,
+	red: (text) => `\u001b[31m${text}\u001b[39m`,
+	dim: (text) => `\u001b[2m${text}\u001b[22m`,
+};
+
+const PLAIN_PALETTE: Palette = {
+	green: (text) => text,
+	red: (text) => text,
+	dim: (text) => text,
 };
 
 export const USAGE = `gumbox — Vite pipeline QA boxes that write receipts
@@ -271,12 +292,13 @@ async function runRunCommand(command: RunCommand, deps: CliDependencies): Promis
 
 	// Human output streams each box result as it lands, so multi-box runs
 	// never look hung between groups; --json stays one machine-readable blob.
+	const paint = deps.colors === true ? ANSI_PALETTE : PLAIN_PALETTE;
 	const reportBoxResult = (box: BoxRunResult): void => {
 		if (box.status === 'passed') {
-			deps.stdout(`pass ${box.name} (${box.file})`);
+			deps.stdout(`${paint.green('pass')} ${box.name} ${paint.dim(`(${box.file})`)}`);
 			return;
 		}
-		deps.stdout(`fail ${box.name} (${box.file})`);
+		deps.stdout(`${paint.red('fail')} ${box.name} ${paint.dim(`(${box.file})`)}`);
 		if (box.error !== null) {
 			deps.stdout(`     ${box.error.message}`);
 		}
@@ -320,10 +342,13 @@ async function runRunCommand(command: RunCommand, deps: CliDependencies): Promis
 		return failedBoxes.length === 0 ? EXIT_PASSED : EXIT_BOX_FAILURE;
 	}
 
-	deps.stdout(
-		`${result.boxes.length - failedBoxes.length} passed, ${failedBoxes.length} failed (${result.boxes.length} boxes)`,
-	);
-	deps.stdout(`receipt: ${result.receiptPath}`);
+	const passedPart = paint.green(`${result.boxes.length - failedBoxes.length} passed`);
+	const failedPart =
+		failedBoxes.length > 0
+			? paint.red(`${failedBoxes.length} failed`)
+			: `${failedBoxes.length} failed`;
+	deps.stdout(`${passedPart}, ${failedPart} (${result.boxes.length} boxes)`);
+	deps.stdout(`receipt: ${paint.dim(result.receiptPath)}`);
 	return failedBoxes.length === 0 ? EXIT_PASSED : EXIT_BOX_FAILURE;
 }
 
