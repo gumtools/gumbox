@@ -105,9 +105,25 @@ async function readReleasedVersion(): Promise<string> {
 	return manifest.version;
 }
 
-/** Conventional-commit release notes since the previous tag (changelogen). */
-function releaseNotes(version: string): Promise<string> {
-	return capture(['deno', 'run', '-A', CHANGELOGEN, '-r', version]);
+/** Conventional-commit release notes since the previous release (changelogen). */
+async function releaseNotes(version: string): Promise<string> {
+	const from = await previousReleaseRef(version);
+	return capture(['deno', 'run', '-A', CHANGELOGEN, '-r', version, '--from', from]);
+}
+
+/**
+ * The previous release tag, or the first commit when this is the first
+ * release. changelogen's own "last tag" guess cannot be trusted here: by the
+ * time notes are generated this release's tag already exists at HEAD, so the
+ * default range would be empty.
+ */
+async function previousReleaseRef(version: string): Promise<string> {
+	const tags = await capture(['git', 'tag', '-l', 'v*', '--sort=-v:refname']);
+	const previousTag = tags.split('\n').find((tag) => tag !== '' && tag !== `v${version}`);
+	if (previousTag !== undefined) {
+		return previousTag;
+	}
+	return capture(['git', 'rev-list', '--max-parents=0', 'HEAD']);
 }
 
 /**
