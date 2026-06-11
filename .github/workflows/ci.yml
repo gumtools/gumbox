@@ -55,6 +55,27 @@ jobs:
             - name: Run tests
               run: deno task test
 
+    # Windows coverage exists to exercise browser discovery against the
+    # runner's preinstalled Chrome; the full suite still gates on ubuntu.
+    test-windows:
+        runs-on: windows-latest
+        timeout-minutes: 20
+        steps:
+            - name: Checkout
+              uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+            - name: Set up Deno
+              uses: denoland/setup-deno@667a34cdef165d8d2b2e98dde39547c9daac7282 # v2.0.4
+              with:
+                  deno-version: v2.x
+                  cache: true
+
+            - name: Install dependencies
+              run: deno install --frozen
+
+            - name: Run tests
+              run: deno task test
+
     build:
         runs-on: ubuntu-latest
         timeout-minutes: 10
