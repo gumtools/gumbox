@@ -2,6 +2,8 @@
   <img src="./gumbox.png" alt="Gumbox — prove changes faster, catch regressions early" width="820" />
 </p>
 
+# Gumbox
+
 **See what your Vite pipeline is actually doing — and keep the receipts.**
 
 You save a file and the page stays stale. You restart the dev server and now it works — this
