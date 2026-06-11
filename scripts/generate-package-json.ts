@@ -29,26 +29,16 @@ function requireField(value: string | undefined, field: string): string {
 	return value;
 }
 
-/** Extracts '8.0.16' from an import specifier like 'npm:vite@8.0.16'. */
-function npmVersionRange(specifier: string, packageName: string): string {
-	const prefix = `npm:${packageName}@`;
-	if (!specifier.startsWith(prefix)) {
-		throw new Error(
-			`deno.json imports['${packageName}'] is '${specifier}', expected an '${prefix}<range>' specifier.`,
-		);
-	}
-	return specifier.slice(prefix.length);
-}
+// Consumers bring their own vite (gumbox drives the project's copy at
+// runtime — see src/vite-loader.ts). The workspace itself gets vite through
+// vite-plus, so the peer range is declared here rather than derived from a
+// direct dependency.
+const vitePeerRange = '^8.0.0';
 
 const repoRoot = new URL('..', import.meta.url);
 const denoManifest = JSON.parse(
 	await Deno.readTextFile(new URL('deno.json', repoRoot)),
 ) as DenoManifest;
-
-const vitePeerRange = npmVersionRange(
-	requireField(denoManifest.imports?.['vite'], "imports['vite']"),
-	'vite',
-);
 
 const packageManifest = {
 	'//': 'generated from deno.json by scripts/generate-package-json.ts — do not edit, do not commit',

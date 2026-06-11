@@ -78,7 +78,9 @@ export function createFileSystem(runtime: GumboxFileSystemRuntime): GumboxFileSy
 		options: { recursive?: boolean; force?: boolean } = {},
 	): Promise<void> => {
 		try {
-			await runtime.remove(filePath, { recursive: options.recursive });
+			// Node's fs.rm rejects a literal `recursive: undefined`; always
+			// pass a boolean.
+			await runtime.remove(filePath, { recursive: options.recursive === true });
 		} catch (error) {
 			if (options.force === true && isPathNotFoundError(error)) {
 				return;
