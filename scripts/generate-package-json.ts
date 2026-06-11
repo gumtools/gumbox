@@ -30,9 +30,9 @@ function requireField(value: string | undefined, field: string): string {
 }
 
 // Consumers bring their own vite (gumbox drives the project's copy at
-// runtime — see src/vite-loader.ts). The workspace itself gets vite through
-// vite-plus, so the peer range is declared here rather than derived from a
-// direct dependency.
+// runtime — see src/vite-loader.ts). The workspace pins vite directly in
+// deno.json so the loader's bare `import('vite')` fallback resolves from a
+// fresh install, but consumers only see this peer range.
 const vitePeerRange = '^8.0.0';
 
 const repoRoot = new URL('..', import.meta.url);

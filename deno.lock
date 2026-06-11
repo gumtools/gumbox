@@ -1,6 +1,7 @@
 {
   "version": "5",
   "specifiers": {
+    "jsr:@std/yaml@*": "1.1.1",
     "npm:@types/node@24.12.2": "24.12.2",
     "npm:mitt@^3.0.1": "3.0.1",
     "npm:oxfmt@0.46.0": "0.46.0",
@@ -11,7 +12,13 @@
     "npm:tsdown@latest": "0.22.2_typescript@5.9.3",
     "npm:typescript@5.9.3": "5.9.3",
     "npm:vite-plus@0.1.20": "0.1.20_yaml@2.9.0",
+    "npm:vite@8.0.16": "8.0.16_@types+node@24.12.2_yaml@2.9.0",
     "npm:yaml@2": "2.9.0"
+  },
+  "jsr": {
+    "@std/yaml@1.1.1": {
+      "integrity": "a57665ecf3d17b926380593a56625d8a10cc7281802f1e993b5ebc94a48e71f8"
+    }
   },
   "npm": {
     "@babel/generator@8.0.0-rc.6": {
@@ -575,7 +582,7 @@
       "os": ["linux"],
       "cpu": ["x64"]
     },
-    "@voidzero-dev/vite-plus-test@0.1.20_@types+node@24.12.2_yaml@2.9.0": {
+    "@voidzero-dev/vite-plus-test@0.1.20_@types+node@24.12.2_vite@8.0.16__@types+node@24.12.2__yaml@2.9.0_yaml@2.9.0": {
       "integrity": "sha512-vy2dJYw1bhgQ/+BrQrfwPlSKzQ2mm3YLJ9kGF7Yo0UJ2P3XKpshtgFIWLjSg/IASnC93OAx0c/7j3NM0I1RMuA==",
       "dependencies": [
         "@standard-schema/spec",
@@ -1078,7 +1085,8 @@
       "npm:pathe@^2.0.3",
       "npm:tinyglobby@~0.2.17",
       "npm:typescript@5.9.3",
-      "npm:vite-plus@0.1.20"
+      "npm:vite-plus@0.1.20",
+      "npm:vite@8.0.16"
     ]
   }
 }
