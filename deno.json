@@ -1,6 +1,6 @@
 {
 	"name": "gumbox",
-	"version": "0.0.0",
+	"version": "0.1.0",
 	"exports": {
 		".": "./src/index.ts",
 		"./cli": "./src/cli/gumbox.ts"
