@@ -3,5 +3,6 @@ node_modules
 dist
 .gumbox
 .tmp/
+docs/
 # generated npm-consumption manifest (deno task manifest); deno.json is canonical
 /package.json
