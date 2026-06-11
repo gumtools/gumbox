@@ -4,23 +4,14 @@
 
 # Gumbox
 
-**See what your Vite pipeline is actually doing — and keep the receipts.**
+**See what your Vite pipeline actually did — with receipts.**
 
-You save a file and the page stays stale. You restart the dev server and now it works — this
-time. It worked in dev, then 404'd in production. Every Vite developer knows the ritual:
-restart, hard-refresh, `console.log`, pray 🙏.
+Restart, hard-refresh, `console.log`, pray 🙏 — Vite knew what happened the whole time, it
+just never told you. Gumbox runs your real pipeline and writes a **receipt** for every run:
+proof you, CI, or an AI agent can act on.
 
-Vite knew exactly what happened the whole time. It just never told you.
-
-Gumbox makes it tell you. Describe what your pipeline should do, and Gumbox runs the real
-thing — your config, your plugins, your environments — and proves what it actually did. Every
-run writes a **receipt**: evidence you, CI, or an AI agent can act on.
-
-> ⚠️ **Pre-release.** Gumbox is under active development and not yet published to npm. The API
-> follows the [specs](./specs/README.md), which are the product truth — some pieces are still
-> landing.
->
-> This project is designed by Jack, implemented by **Mythos**, with **Codex** serving as its reviewer.
+> ⚠️ **Pre-release** — not on npm yet; the [specs](./specs/README.md) are the product truth.
+> Designed by Jack, implemented by **Mythos**, reviewed by **Codex**.
 
 ## A box in 30 seconds
 
