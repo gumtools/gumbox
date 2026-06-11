@@ -14,18 +14,19 @@ with TypeScript APIs and the unjs ecosystem first.
 
 ## Required Replacements
 
-| Need                          | Use                                                            | Never                            |
-| ----------------------------- | -------------------------------------------------------------- | -------------------------------- |
-| Path join/resolve/relative    | `pathe`                                                        | `node:path`                      |
-| URL build/parse/query         | `ufo`                                                          | `node:url`, string concat        |
-| `fileURLToPath`, module utils | `mlly`                                                         | `node:url`                       |
-| Runtime/env detection         | `std-env`                                                      | `process.platform`, `Deno.build` |
-| File discovery/globbing       | `tinyglobby`                                                   | hand-rolled `readdir` walks      |
-| Event emitters                | web-standard `EventTarget` or a tiny agnostic emitter (`mitt`) | `node:events`                    |
-| Hashing/object hash           | `ohash` or `globalThis.crypto` (Web Crypto)                    | `node:crypto`                    |
-| HTTP requests                 | global `fetch`                                                 | `node:http`, `axios`             |
-| Temp/scratch space in tests   | repo-local `.tmp/` directory (gitignored)                      | `node:os` `tmpdir()`             |
-| Filesystem access             | injected `GumboxFileSystem` from `src/filesystem.ts`           | direct runtime FS imports        |
+| Need                        | Use                                                                              | Never                            |
+| --------------------------- | -------------------------------------------------------------------------------- | -------------------------------- |
+| Path join/resolve/relative  | `pathe`                                                                          | `node:path`                      |
+| URL build/parse/query       | `ufo`                                                                            | `node:url`, string concat        |
+| File URL <-> path           | `src/file-url.ts` helpers (pure URL parsing)                                     | `node:url`, `mlly`               |
+| Package/module resolution   | ancestor `node_modules` walk + JSON import attributes (see `src/vite-loader.ts`) | `node:module`, `mlly`            |
+| Runtime/env detection       | `std-env`                                                                        | `process.platform`, `Deno.build` |
+| File discovery/globbing     | `tinyglobby`                                                                     | hand-rolled `readdir` walks      |
+| Event emitters              | web-standard `EventTarget` or a tiny agnostic emitter (`mitt`)                   | `node:events`                    |
+| Hashing/object hash         | `ohash` or `globalThis.crypto` (Web Crypto)                                      | `node:crypto`                    |
+| HTTP requests               | global `fetch`                                                                   | `node:http`, `axios`             |
+| Temp/scratch space in tests | repo-local `.tmp/` directory (gitignored)                                        | `node:os` `tmpdir()`             |
+| Filesystem access           | injected `GumboxFileSystem` from `src/filesystem.ts`                             | direct runtime FS imports        |
 
 ## Filesystem Boundary
 

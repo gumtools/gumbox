@@ -15,7 +15,7 @@ local smoke scripts. Specs in `specs/` are product truth.
 - Library and ordinary test code is runtime-agnostic: no `node:*` imports, no `process.*`, no
   `Deno.*`/`Bun.*`. Filesystem access is an injected `GumboxFileSystem`; only explicit host
   boundaries adapt runtime filesystem APIs.
-- Use `pathe` (paths), `ufo` (URLs), `mlly` (fileURLToPath/module utils), `std-env` (runtime
+- Use `pathe` (paths), `ufo` (URLs), `src/file-url.ts` (file URL <-> path), `std-env` (runtime
   detection), `tinyglobby` (globbing), global `fetch`.
 - AST work uses rolldown/oxc's native parser (`parseAst` from `rolldown` / `oxc-parser`) — never
   babel, acorn, or a second JS parser. Prefer native (Rust-backed) tooling with TypeScript APIs and
