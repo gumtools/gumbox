@@ -32,15 +32,11 @@ Everything in this codebase serves one loop:
 
 ```mermaid
 flowchart LR
-    box["📦 cart.box.ts"]:::pink --> runner["runner<br/>builds the box context"]:::orange
-    runner --> vite["your real Vite pipeline<br/>dev · build · preview"]:::cream
-    vite --> evidence["evidence store<br/>HMR payloads · invalidations<br/>console · network · artifacts"]:::cream
-    evidence --> expect["expect.*<br/>diffs expectation vs evidence"]:::orange
-    expect --> receipt["🧾 receipt.json<br/>pass or fail, with the whole story"]:::pink
+    box["📦 cart.box.ts"] --> vite["real Vite pipeline<br/>dev · build · preview"] --> evidence["evidence<br/>HMR · modules · console"] --> receipt["🧾 receipt.json"]
 
-    classDef orange fill:#F97316,stroke:#C2410C,color:#ffffff
-    classDef pink fill:#EC4899,stroke:#BE185D,color:#ffffff
-    classDef cream fill:#FFF7ED,stroke:#F97316,color:#7C2D12
+    classDef default fill:#FFF7ED,stroke:#F97316,color:#7C2D12
+    classDef hot fill:#F97316,stroke:#C2410C,color:#ffffff
+    class box,receipt hot
 ```
 
 A box looks like this:
@@ -83,71 +79,54 @@ observed), and a causal timeline.
 
 ## Code map
 
+How one box run flows through `src/`:
+
 ```mermaid
-flowchart TD
-    specs["📜 specs/<br/>product truth — behavior changes start here"]:::pink
+flowchart LR
+    cli["cli/"] --> discovery["discovery.ts"] --> runner["runner.ts"]
+    runner --> project["project.ts"] --> evidence["evidence.ts"]
+    runner --> pipeline["build.ts<br/>preview.ts"] --> evidence
+    runner --> browser["browser.ts"] --> evidence
+    evidence --> expect["expect.ts"] --> receipt["receipt.ts"]
 
-    subgraph authoring["Authoring"]
-        boxfn["box.ts<br/>the box() function"]:::cream
-        disc["discovery.ts<br/>finds *.box.ts files,<br/>derives names"]:::cream
-    end
-
-    subgraph engine["Engine — one box run"]
-        runner["runner.ts<br/>six-key context, lifecycle,<br/>guaranteed file restoration"]:::orange
-        project["project.ts<br/>file edits + diffs + restore"]:::cream
-        buildprev["build.ts · preview.ts<br/>pipeline.build / preview"]:::cream
-        browser["browser.ts<br/>page evidence"]:::cream
-        evidence["evidence.ts<br/>taps Vite's hot channel and<br/>hotUpdate hook, classifies reactions"]:::orange
-        expectfile["expect.ts<br/>the assertion surface"]:::orange
-        receiptfile["receipt.ts<br/>assembles and writes receipts"]:::cream
-    end
-
-    subgraph host["Host boundary — the only place runtime APIs are allowed"]
-        cli["cli/<br/>argv · fs · signals · colors ·<br/>playwright-core"]:::pink
-    end
-
-    specs -.govern.-> engine
-    disc --> runner
-    boxfn --> disc
-    runner --> project & buildprev & browser
-    project & buildprev & browser --> evidence
-    evidence --> expectfile --> receiptfile
-    cli --> runner
-
-    classDef orange fill:#F97316,stroke:#C2410C,color:#ffffff
-    classDef pink fill:#EC4899,stroke:#BE185D,color:#ffffff
-    classDef cream fill:#FFF7ED,stroke:#F97316,color:#7C2D12
+    classDef default fill:#FFF7ED,stroke:#F97316,color:#7C2D12
+    classDef hot fill:#F97316,stroke:#C2410C,color:#ffffff
+    class runner,evidence hot
 ```
 
-Two places not on the diagram that you'll touch constantly:
-
-- `test/fixtures/` — small real Vite apps the tests run boxes against; the box files inside
-  them are executable documentation of the API
-- `test/*.test.ts` — the suite; tests copy a fixture to a temp dir, run boxes through the real
-  pipeline, then assert on the written receipt JSON
+| Place                            | Owns                                                                           |
+| -------------------------------- | ------------------------------------------------------------------------------ |
+| `specs/`                         | **product truth** — behavior changes start (or end) here                       |
+| `src/box.ts`, `src/discovery.ts` | the `box()` function; finding `*.box.ts` files and deriving names              |
+| `src/runner.ts`                  | one box run: the six-key context, lifecycle, guaranteed file restoration       |
+| `src/project.ts`                 | file edits with diffs and restore                                              |
+| `src/build.ts`, `src/preview.ts` | `pipeline.build()` / `pipeline.preview()`                                      |
+| `src/browser.ts`                 | page evidence (console, network, navigations, screenshots)                     |
+| `src/evidence.ts`                | taps Vite's hot channel and `hotUpdate` hook, classifies each reaction         |
+| `src/expect.ts`                  | the assertion surface (`expect.edit`, `expect.page.outcome`, ...)              |
+| `src/receipt.ts`                 | assembles and writes receipts                                                  |
+| `src/cli/`                       | the `gumbox` CLI and the host boundary (argv, fs, signals, colors, playwright) |
+| `test/fixtures/`                 | small real Vite apps — their box files are executable documentation            |
+| `test/*.test.ts`                 | copy a fixture to a temp dir, run boxes for real, assert on the receipt JSON   |
 
 ## Making a change
 
 ```mermaid
-flowchart TD
-    spec["1 · Check specs/ — does the spec cover it?<br/>If your change contradicts it, change the spec first<br/>(same PR is fine)"]:::pink
-    test["2 · Write the failing test:<br/>a small box in test/fixtures/* plus a test<br/>that runs it and asserts on the receipt"]:::orange
-    red{"fails for the<br/>right reason?"}:::cream
-    impl["3 · Implement the smallest change<br/>that makes it pass"]:::orange
-    green{"deno task dev<br/>green?"}:::cream
-    verify["4 · deno task test && deno task build && deno task check"]:::orange
-    pr["Open the PR 🎉"]:::pink
+flowchart LR
+    spec["1 · check<br/>specs/"] --> test["2 · failing<br/>test"] --> impl["3 · smallest<br/>fix"] --> verify["4 · test ·<br/>build · check"] --> pr["PR 🎉"]
 
-    spec --> test --> red
-    red -- "no — fix the test" --> test
-    red -- yes --> impl --> green
-    green -- "no — keep iterating" --> impl
-    green -- yes --> verify --> pr
-
-    classDef orange fill:#F97316,stroke:#C2410C,color:#ffffff
-    classDef pink fill:#EC4899,stroke:#BE185D,color:#ffffff
-    classDef cream fill:#FFF7ED,stroke:#F97316,color:#7C2D12
+    classDef default fill:#FFF7ED,stroke:#F97316,color:#7C2D12
+    classDef hot fill:#F97316,stroke:#C2410C,color:#ffffff
+    class test,impl hot
 ```
+
+1. Find the spec section that covers the behavior (`specs/box-authoring.md` for the API,
+   `specs/scenarios-and-receipts.md` for receipts). If your change contradicts it, the spec
+   changes first — in the same PR is fine.
+2. Write the failing test: usually a small box in a `test/fixtures/*` app plus a test that
+   runs it and asserts on the receipt. Confirm it fails for the right reason.
+3. Implement the smallest change that makes it pass, keeping `deno task dev` green.
+4. Run the full gate: `deno task test && deno task build && deno task check`.
 
 Testing rules you'll be reviewed against:
 
@@ -159,10 +138,38 @@ Testing rules you'll be reviewed against:
 ### The rule that surprises newcomers
 
 **`src/` and test bodies never import `node:*` or touch `process.*`/`Deno.*`.** Paths come
-from `pathe`, module utils from `mlly`, globbing from `tinyglobby`, filesystem access through
+from `pathe`, file-URL helpers from `src/file-url.ts`, globbing from `tinyglobby`, filesystem access through
 the injected `GumboxFileSystem`. Only explicit host boundaries (`src/cli/host.ts`,
 `test/support/*`) may adapt runtime APIs. Full policy:
-`.ruler/runtime-agnostic-tooling.md`.
+`.ruler/rules/runtime-agnostic-tooling.md`.
+
+## AI tools (Ruler)
+
+This project uses [Ruler](https://github.com/intellectronica/ruler) to manage AI assistant
+configuration from a single source of truth. Instead of maintaining separate config files per
+tool (Claude Code, Codex, Cursor, ...), everything lives in one place:
+
+```
+.ruler/
+├── AGENTS.md                     # project overview for all AI tools
+├── rules/                        # focused rules, one concern per file
+│   ├── code-quality.md
+│   ├── runtime-agnostic-tooling.md
+│   └── ...
+└── ruler.toml                    # which agent outputs to generate
+```
+
+Generated outputs (root `CLAUDE.md`, `AGENTS.md`, `.claude/`, editor rule files) are
+**gitignored** — never hand-edit them. To work on this repo with an AI assistant:
+
+```sh
+npx @intellectronica/ruler apply
+```
+
+That regenerates the config for the agents in `ruler.toml` (Claude Code and Codex by default).
+When guidance is wrong or stale, edit the narrowest `.ruler/*.md` file and rerun `ruler apply`.
+Rule of thumb: if it helps everyone working on this repo, it goes in `.ruler/`; personal
+preferences belong in your global `~/.config/ruler/`.
 
 ## See it used for real
 

@@ -13,6 +13,15 @@ proof you, CI, or an AI agent can act on.
 > ⚠️ **Pre-release** — not on npm yet; the [specs](./specs/README.md) are the product truth.
 > Designed by Jack, implemented by **Mythos**, reviewed by **Codex**.
 
+```mermaid
+flowchart LR
+    edit["✏️ you edit<br/>src/message.ts"] --> vite["⚡ your real Vite pipeline<br/>dev · HMR · SSR · build"] --> receipt["🧾 receipt.json<br/>client: hmr accepted<br/>ssr: untouched<br/>page: updated, 0 reloads"]
+
+    classDef default fill:#FFF7ED,stroke:#F97316,color:#7C2D12
+    classDef hot fill:#F97316,stroke:#C2410C,color:#ffffff
+    class receipt hot
+```
+
 ## A box in 30 seconds
 
 A **box** is a small file that runs inside your real Vite pipeline and asserts what the
