@@ -216,14 +216,103 @@ It should answer:
 - which plugin hooks and transforms were observed
 - what timings, request counts, and invalidation breadth were recorded
 - what assertions passed or failed
+- which witness testified to each piece of evidence
+- each witness's verdict and any statements against the run
 - whether the result is suitable as an agent/CI oracle
 - machine-readable summary for tools and agents
 - where screenshots, logs, traces, and artifacts are stored
 
+## Witnesses
+
+A box run is a case and the receipt is the case file. Every part of the
+pipeline that can observe something is a witness, and the receipt records who
+saw what, who backs the result, and who speaks against it.
+
+Witness ids form an open set. A future witness registers a new id without a
+schema change. The runtime attributes evidence to four witnesses today:
+
+| id         | who                                         | testifies to                                                                                                                                                          |
+| ---------- | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pipeline` | the Vite server side                        | the `vite` block, `editOutcomes[]`, `builds[]`, `previews[]`, and server-side timeline events such as server starts, hot payloads, environment requests, and previews |
+| `client`   | facts that originate inside the page        | `pages[].consoleMessages`, `pages[].pageErrors`, `pages[].trackedEvents`, and `pages[].snapshots[].html` (the DOM's own statement)                                    |
+| `driver`   | facts only observable from outside the page | `pages[].failedRequests`, `pages[].navigations`, `pages[].interactions`, and `pages[].snapshots[].screenshot`                                                         |
+| `box`      | the investigator                            | `edits[]`, `assertions[]`, `captures[]`, `notes[]`, `measurements[]`, and the box lifecycle timeline events                                                           |
+
+The witness is whose facts they are, and the channel is how they reached us.
+Today the client witness testifies through the driver's CDP relay and the
+injected page script. When a client-witness plugin lands, the same `client`
+witness gains a Vite websocket channel with no new id and no schema change.
+Pipeline deepening such as transform timing and plugin attribution likewise
+enriches `pipeline` without renaming anything.
+
+Witnesses report and the box claims. A failed assertion lands on the `box`
+attribution because the page truthfully reported its state while the box's
+claim failed. Scene witnesses contradict only on objectively bad facts they
+observed.
+
+Each witness receives a verdict per box:
+
+- `corroborates` — called, gave at least one statement, none against the run
+- `contradicts` — gave at least one statement against the run
+- `silent` — called, but gave zero statements
+- `not-called` — the box never engaged this witness (client and driver when no
+  page was visited, pipeline when no dev server, build, or preview ran)
+
+The contradiction rules are exact. `client` contradicts on any `pageErrors`
+entry or any console message with level `error`. `driver` contradicts on any
+`failedRequests` entry. `pipeline` contradicts on any `vite error payload
+sent` event or any edit outcome carrying a non-null `error`. `box` contradicts
+on a failed box status, any failed assertion, a failed restoration, or a
+thrown box error.
+
+The receipt records testimony as data. Every timeline event and every
+assertion carries a `witness` field, and each box record carries a
+`witnesses` block:
+
+```json
+"witnesses": {
+	"pipeline": { "verdict": "corroborates", "statements": 14, "against": [] },
+	"client": {
+		"verdict": "contradicts",
+		"statements": 9,
+		"against": [
+			{
+				"kind": "page-error",
+				"page": "page-1",
+				"at": "2026-06-11T04:16:44.150Z",
+				"text": "Uncaught Error: boom from the fixture"
+			}
+		]
+	},
+	"driver": { "verdict": "corroborates", "statements": 11, "against": [] },
+	"box": { "verdict": "corroborates", "statements": 5, "against": [] }
+}
+```
+
+`statements` counts the witness's evidence entries for the box. `against`
+lists every statement that speaks against the run with stable `kind` values:
+`console-error`, `page-error`, `request-failed`, `vite-error`, `edit-error`,
+`restore-failed`, `assertion-failed`, `box-error`.
+
+A box is contested when it passed but a witness still contradicts, the
+headline case being a console error captured while every assertion passed.
+Contested never changes box status. The per-box summary records the flat
+verdicts plus a `contested` flag, and the run summary counts contested
+passes.
+
+All witness fields are additive. `gumboxReceipt` stays `1`, no existing field
+changes shape or meaning, and existing receipt consumers keep working unread.
+
+Witness identity and verdicts are data, and color belongs to the renderer.
+The CLI paints verdicts green, red, dim, and yellow, while plain output
+carries the full meaning through stable greppable tokens such as `pipeline+`,
+`client!`, and `driver.`.
+
 ## Timeline
 
 The Gumbox UI should center on a box timeline before promising full application
-time travel.
+time travel. Every timeline event carries a `witness` attribution naming whose
+testimony it is.
 
 Example timeline events:
 

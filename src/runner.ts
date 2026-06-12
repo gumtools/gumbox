@@ -13,6 +13,7 @@ import type { GumboxFileSystem } from './filesystem.ts';
 import { startPipelinePreview } from './preview.ts';
 import { createProjectApi } from './project.ts';
 import { BoxRecorder, createRunDirectory, writeRunReceipt } from './receipt.ts';
+import type { BoxWitnesses } from './witness.ts';
 import type {
 	BoxContext,
 	BoxRunResult,
@@ -418,6 +419,10 @@ async function runSingleBox(args: {
 		exportName: discovered.exportName,
 		status,
 	});
+	// The receipt is the source of truth for testimony; the run result carries
+	// the same witnesses block so the CLI can render verdicts as boxes finish.
+	const witnesses = receipt.witnesses as BoxWitnesses;
+	const summary = receipt.summary as { contested: boolean };
 	return {
 		result: {
 			name: definition.name,
@@ -425,6 +430,8 @@ async function runSingleBox(args: {
 			exportName: discovered.exportName,
 			status,
 			error: recorder.error,
+			witnesses,
+			contested: summary.contested,
 		},
 		receipt,
 	};
@@ -445,7 +452,9 @@ const pendingEditRestores = new Set<() => Promise<{ failed: number }>>();
  * same box twice is a no-op.
  */
 export async function restorePendingEdits(): Promise<void> {
-	for (const restore of [...pendingEditRestores]) {
+	// Iterating the live Set is safe: a box finishing mid-restore deletes its
+	// own (already restored) entry, which Set iteration simply skips.
+	for (const restore of pendingEditRestores) {
 		await restore().catch(() => undefined);
 	}
 }
@@ -508,6 +517,7 @@ export async function runBoxes(options: RunBoxesOptions): Promise<RunBoxesResult
 	}
 	const failed = results.filter((result) => result.status === 'failed').length;
 	const status: 'passed' | 'failed' = failed === 0 ? 'passed' : 'failed';
+	const contested = results.filter((result) => result.contested).length;
 	const receipt = {
 		gumboxReceipt: 1,
 		runId,
@@ -518,6 +528,7 @@ export async function runBoxes(options: RunBoxesOptions): Promise<RunBoxesResult
 			total: results.length,
 			passed: results.length - failed,
 			failed,
+			contested,
 			invalidBoxFiles: invalid.length,
 		},
 		invalidBoxFiles: invalid,

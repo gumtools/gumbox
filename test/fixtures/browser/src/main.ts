@@ -46,6 +46,25 @@ if (counter) {
 	});
 }
 
+// `?boom=1` is the canonical contested page: the box's assertions pass while
+// the page throws an uncaught error and a network request fails, so the
+// client and driver witnesses must contradict a passing box. The data-*
+// settle flags let a box wait (event-driven) until both pieces of evidence
+// exist before asserting.
+if (location.search.includes('boom=1')) {
+	// Port 9 (discard) is rejected as ERR_UNSAFE_PORT — a deterministic failed
+	// network request without any external dependency.
+	fetch('http://127.0.0.1:9/boom-missing-resource').catch(() => {
+		document.body.setAttribute('data-boom-request-settled', 'true');
+	});
+	window.addEventListener('error', () => {
+		document.body.setAttribute('data-boom-thrown', 'true');
+	});
+	setTimeout(() => {
+		throw new Error('boom from the fixture');
+	}, 0);
+}
+
 // `?noise=1` lets a box prove that console errors and failed network
 // requests become receipt evidence without failing the happy-path boxes.
 if (location.search.includes('noise=1')) {

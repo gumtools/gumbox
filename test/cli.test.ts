@@ -151,7 +151,9 @@ describe('gumbox cli', () => {
 				}>;
 				invalidBoxFiles: Array<{ file: string; error: string }>;
 			};
-			expect(parsed.root).toBe(root);
+			// The CLI emits pathe-normalized (forward-slash) paths, while `root`
+			// comes from the host filesystem and uses backslashes on Windows.
+			expect(parsed.root).toBe(path.normalize(root));
 			expect(parsed.boxes).toHaveLength(12);
 			const isolation = parsed.boxes.find((entry) => entry.file === 'isolation.box.ts')!;
 			expect(isolation.name).toBe('client edit stays out of the ssr graph');
@@ -260,7 +262,8 @@ describe('gumbox cli', () => {
 				failed: Array<{ name: string; file: string; error: string | null }>;
 			};
 			expect(summary.status).toBe('failed');
-			expect(summary.root).toBe(root);
+			// pathe-normalized CLI output vs a native (backslash on Windows) tmp path.
+			expect(summary.root).toBe(path.normalize(root));
 			expect(summary.summary).toEqual({ total: 1, passed: 0, failed: 1 });
 			expect(summary.failed[0]!.name).toBe('intentionally failing box');
 			expect(summary.failed[0]!.error).toContain('intentional failure');
@@ -374,6 +377,159 @@ describe('gumbox cli', () => {
 			expect(stdout).toContain('Usage');
 			expect(stdout).toContain('gumbox list');
 			expect(stdout).toContain('--receipt-dir');
+			expect(stdout).toContain('gumbox evidence');
+		},
+		TEST_TIMEOUT_MS,
+	);
+
+	test(
+		'per-box lines carry witness tokens in stable order with plain symbols',
+		async () => {
+			const root = await createFixtureProject();
+
+			// Edit-only boxes never engage the pipeline or a page: every scene
+			// witness reads not-called.
+			const editsRun = await execCli(['create, remove, and copy files'], root);
+			expect(editsRun.code).toBe(0);
+			expect(editsRun.stdout).toContain('[pipeline. client. driver.]');
+
+			// A dev-pipeline box without a browser: the pipeline corroborates
+			// while client and driver stay not-called.
+			const hmrRun = await execCli(['message updates without reload'], root);
+			expect(hmrRun.code).toBe(0);
+			expect(hmrRun.stdout).toContain('[pipeline+ client. driver.]');
+			// No contested marker on an uncontested run.
+			expect(hmrRun.stdout).not.toContain('contested');
+		},
+		TEST_TIMEOUT_MS,
+	);
+
+	test(
+		'--json adds per-box witness summaries and a contested list',
+		async () => {
+			const root = await createFixtureProject();
+			const { code, stdout } = await execCli(['run', 'edits', '--json'], root);
+
+			expect(code).toBe(0);
+			const summary = JSON.parse(stdout) as {
+				contested: unknown[];
+				boxes: Array<{
+					name: string;
+					status: string;
+					contested: boolean;
+					witnesses: Record<string, string>;
+				}>;
+			};
+			expect(summary.contested).toEqual([]);
+			expect(summary.boxes).toHaveLength(2);
+			const fileOperations = summary.boxes.find(
+				(box) => box.name === 'create, remove, and copy files',
+			)!;
+			expect(fileOperations.status).toBe('passed');
+			expect(fileOperations.contested).toBe(false);
+			expect(fileOperations.witnesses).toEqual({
+				pipeline: 'not-called',
+				client: 'not-called',
+				driver: 'not-called',
+				box: 'corroborates',
+			});
+		},
+		TEST_TIMEOUT_MS,
+	);
+});
+
+describe('gumbox evidence', () => {
+	test(
+		'renders witness testimony for the latest receipt by default',
+		async () => {
+			const root = await createFixtureProject();
+			const run = await execCli(['run', 'edits'], root);
+			expect(run.code).toBe(0);
+
+			const evidence = await execCli(['evidence'], root);
+			expect(evidence.code).toBe(0);
+			expect(evidence.stdout).toContain('case: create, remove, and copy files — pass');
+			expect(evidence.stdout).toContain('case: batch edit touches multiple files — pass');
+			expect(evidence.stdout).toContain('pipeline witness — not-called');
+			expect(evidence.stdout).toContain('box — corroborates');
+			expect(evidence.stdout).toContain('edits: 3');
+			expect(evidence.stdout).toContain('restoration: clean');
+		},
+		TEST_TIMEOUT_MS,
+	);
+
+	test(
+		'narrows by selector and witness, and --json emits the semantic blocks',
+		async () => {
+			const root = await createFixtureProject();
+			const run = await execCli(['run', 'edits'], root);
+			expect(run.code).toBe(0);
+
+			const narrowed = await execCli(['evidence', 'batch', '--witness', 'box'], root);
+			expect(narrowed.code).toBe(0);
+			expect(narrowed.stdout).toContain('case: batch edit touches multiple files — pass');
+			expect(narrowed.stdout).not.toContain('create, remove, and copy files');
+			expect(narrowed.stdout).not.toContain('pipeline witness');
+			expect(narrowed.stdout).toContain('box — corroborates');
+
+			const json = await execCli(['evidence', 'batch', '--json'], root);
+			expect(json.code).toBe(0);
+			const parsed = JSON.parse(json.stdout) as {
+				receiptPath: string;
+				boxes: Array<{
+					name: string;
+					status: string;
+					contested: boolean;
+					witnesses: Record<
+						string,
+						{ verdict: string; statements: number; against: unknown[] }
+					>;
+				}>;
+			};
+			expect(parsed.boxes).toHaveLength(1);
+			expect(parsed.boxes[0]!.name).toBe('batch edit touches multiple files');
+			expect(parsed.boxes[0]!.contested).toBe(false);
+			expect(parsed.boxes[0]!.witnesses['box']!.verdict).toBe('corroborates');
+			expect(parsed.boxes[0]!.witnesses['box']!.against).toEqual([]);
+			expect(await fileSystem.exists(parsed.receiptPath)).toBe(true);
+		},
+		TEST_TIMEOUT_MS,
+	);
+
+	test(
+		'reads a receipt by run id or path and exits 2 when none is found',
+		async () => {
+			const root = await createFixtureProject();
+
+			// No run yet: nothing to drill into.
+			const missing = await execCli(['evidence'], root);
+			expect(missing.code).toBe(2);
+			expect(missing.stderr).toContain('no receipt found');
+
+			const run = await execCli(['run', 'edits'], root);
+			expect(run.code).toBe(0);
+			const receiptPath = printedReceiptPath(run.stdout);
+			const runId = path.basename(path.dirname(receiptPath));
+
+			const byId = await execCli(['evidence', '--receipt', runId], root);
+			expect(byId.code).toBe(0);
+			expect(byId.stdout).toContain('case: create, remove, and copy files — pass');
+
+			const byPath = await execCli(['evidence', '--receipt', receiptPath], root);
+			expect(byPath.code).toBe(0);
+
+			const unknownRun = await execCli(['evidence', '--receipt', 'no-such-run'], root);
+			expect(unknownRun.code).toBe(2);
+			expect(unknownRun.stderr).toContain("no receipt found for 'no-such-run'");
+
+			// --receipt and --witness belong to gumbox evidence only.
+			const misused = await execCli(['run', 'edits', '--witness', 'client'], root);
+			expect(misused.code).toBe(2);
+			expect(misused.stderr).toContain('only apply to gumbox evidence');
+
+			const badWitness = await execCli(['evidence', '--witness', 'judge'], root);
+			expect(badWitness.code).toBe(2);
+			expect(badWitness.stderr).toContain('--witness must be one of');
 		},
 		TEST_TIMEOUT_MS,
 	);

@@ -905,3 +905,107 @@ describe('gumbox runtime', () => {
 		TEST_TIMEOUT_MS,
 	);
 });
+
+describe('receipt witness evidence', () => {
+	const LEGACY_RUN_FIELDS = ['runId', 'createdAt', 'root', 'summary', 'invalidBoxFiles', 'boxes'];
+	const LEGACY_BOX_FIELDS = [
+		'name',
+		'tags',
+		'modes',
+		'ui',
+		'file',
+		'exportName',
+		'status',
+		'error',
+		'vite',
+		'edits',
+		'builds',
+		'previews',
+		'pages',
+		'editOutcomes',
+		'assertions',
+		'captures',
+		'notes',
+		'measurements',
+		'timeline',
+		'startedAt',
+		'finishedAt',
+		'durationMs',
+		'summary',
+	];
+	const LEGACY_BOX_SUMMARY_FIELDS = [
+		'status',
+		'assertions',
+		'edits',
+		'builds',
+		'previews',
+		'pages',
+		'restorationFailed',
+	];
+
+	test(
+		'receipts stay additive: the legacy field set survives next to witness evidence',
+		async () => {
+			const root = await createFixtureProject();
+			const boxes = await selectBoxes(root, 'message updates without reload');
+			const result = await runBoxes({ root, boxes, fileSystem });
+			expect(result.status, result.boxes[0]?.error?.message).toBe('passed');
+
+			const receipt = JSON.parse(
+				await fileSystem.readTextFile(result.receiptPath),
+			) as ReceiptJson & Record<string, unknown>;
+
+			// Back-compat bar: gumboxReceipt stays 1 and every legacy field is
+			// still present with the new fields riding alongside.
+			expect(receipt.gumboxReceipt).toBe(1);
+			for (const field of LEGACY_RUN_FIELDS) {
+				expect(receipt, `run field '${field}'`).toHaveProperty(field);
+			}
+			const boxReceipt = receipt.boxes[0]! as unknown as Record<string, unknown>;
+			for (const field of LEGACY_BOX_FIELDS) {
+				expect(boxReceipt, `box field '${field}'`).toHaveProperty(field);
+			}
+			const boxSummary = boxReceipt.summary as Record<string, unknown>;
+			for (const field of LEGACY_BOX_SUMMARY_FIELDS) {
+				expect(boxSummary, `box summary field '${field}'`).toHaveProperty(field);
+			}
+
+			// Run summary gains the contested count.
+			expect((receipt.summary as Record<string, unknown>).contested).toBe(0);
+
+			// Every timeline event and assertion carries a witness attribution.
+			const witnessIds = ['pipeline', 'client', 'driver', 'box'];
+			const timeline = boxReceipt.timeline as Array<Record<string, unknown>>;
+			expect(timeline.length).toBeGreaterThan(0);
+			for (const event of timeline) {
+				expect(witnessIds, `timeline '${String(event.type)}'`).toContain(event.witness);
+			}
+			const assertions = boxReceipt.assertions as Array<Record<string, unknown>>;
+			expect(assertions.length).toBeGreaterThan(0);
+			expect(assertions.find((assertion) => assertion.name === 'edit')?.witness).toBe(
+				'pipeline',
+			);
+
+			// The per-box witnesses block and summary verdicts: the hmr box runs
+			// a dev pipeline but never opens a browser page.
+			const witnesses = boxReceipt.witnesses as Record<
+				string,
+				{ verdict: string; statements: number; against: unknown[] }
+			>;
+			expect(witnesses.pipeline!.verdict).toBe('corroborates');
+			expect(witnesses.pipeline!.statements).toBeGreaterThan(0);
+			expect(witnesses.pipeline!.against).toEqual([]);
+			expect(witnesses.client!.verdict).toBe('not-called');
+			expect(witnesses.driver!.verdict).toBe('not-called');
+			expect(witnesses.box!.verdict).toBe('corroborates');
+			expect(boxSummary.witnesses).toEqual({
+				pipeline: 'corroborates',
+				client: 'not-called',
+				driver: 'not-called',
+				box: 'corroborates',
+			});
+			expect(boxSummary.contested).toBe(false);
+		},
+		TEST_TIMEOUT_MS,
+	);
+});

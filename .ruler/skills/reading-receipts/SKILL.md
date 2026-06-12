@@ -25,17 +25,18 @@ The CLI also prints the receipt path after every run, and assertion failures emb
 
 Each box record:
 
-| Field              | Answers                                                                 |
-| ------------------ | ----------------------------------------------------------------------- |
-| `status` / `error` | did it pass; the failing assertion's message with expected vs observed  |
-| `vite`             | config file, server URL, resolved environment names, browser alias      |
-| `edits[]`          | every file edit: before/after content, `restored: true` (must be!)      |
-| `editOutcomes[]`   | per-environment reaction to each edit: `hmr`, `invalidated`, `messages` |
-| `assertions[]`     | every assertion, passed AND failed, with `expected`/`observed` shapes   |
-| `pages[]`          | console errors, failed requests, navigations, tracked DOM events        |
-| `builds[]`         | strategy, environments, outDirs, artifacts with sizes, duration         |
-| `timeline[]`       | every evidence event with timestamps — the causal story in order        |
-| `durationMs`       | where the wall-clock went                                               |
+| Field              | Answers                                                                           |
+| ------------------ | --------------------------------------------------------------------------------- |
+| `status` / `error` | did it pass; the failing assertion's message with expected vs observed            |
+| `vite`             | config file, server URL, resolved environment names, browser alias                |
+| `edits[]`          | every file edit: before/after content, `restored: true` (must be!)                |
+| `editOutcomes[]`   | per-environment reaction to each edit: `hmr`, `invalidated`, `messages`           |
+| `assertions[]`     | every assertion, passed AND failed, with `expected`/`observed` shapes             |
+| `pages[]`          | console errors, failed requests, navigations, tracked DOM events                  |
+| `builds[]`         | strategy, environments, outDirs, artifacts with sizes, duration                   |
+| `witnesses`        | per-witness verdicts (pipeline/client/driver/box) with statements against the run |
+| `timeline[]`       | every evidence event with timestamps — the causal story in order                  |
+| `durationMs`       | where the wall-clock went                                                         |
 
 ## Debugging patterns
 
@@ -57,6 +58,16 @@ not pipeline slowness.
 **Flaky page state** — `box-N/` holds the screenshot and HTML snapshot for every
 `receipt.capture(label)` and visit; compare them against `pages[].consoleMessages` and
 `failedRequests`.
+
+**Who saw it** — start from the box's `witnesses` block (or `summary.witnesses` for the
+one-line verdicts). A passing box with `summary.contested: true` means a witness still spoke
+against the run: `client` contradicts on page/console errors, `driver` on failed requests,
+`pipeline` on Vite error payloads or edit errors, `box` on failed assertions or restoration.
+Each `against[]` statement carries a stable `kind`, the page, a timestamp, and the text — use
+the `witness` field on timeline events to pull that witness's full story in order. The CLI
+renders the same data: `gumbox evidence [selector]` drills into the latest receipt
+(`--receipt <run-id|path>` for an older one, `--witness <id>` to narrow, `--json` for the raw
+blocks).
 
 ## Rules
 

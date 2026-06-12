@@ -12,6 +12,14 @@ import type {
 	Measurement,
 	PreviewRecord,
 } from './types.ts';
+import {
+	computeBoxWitnesses,
+	isContestedBox,
+	summarizeWitnessVerdicts,
+	witnessForAssertion,
+	witnessForTimelineType,
+} from './witness.ts';
+import type { WitnessTimelineEvent } from './witness.ts';
 
 export type TimelineEvent = { seq: number; at: string; type: string } & Record<string, unknown>;
 
@@ -81,7 +89,7 @@ export class BoxRecorder {
 	}
 
 	assertion(record: AssertionRecord): void {
-		this.assertions.push(record);
+		this.assertions.push({ ...record, witness: witnessForAssertion(record.name) });
 		this.timeline(`assertion ${record.status}`, {
 			assertion: record.name,
 			environment: record.environment,
@@ -161,9 +169,17 @@ export class BoxRecorder {
 	}
 
 	buildBoxReceipt(meta: BoxReceiptMeta): Record<string, unknown> {
-		const timeline = [...this.timelineEvents, ...this.evidenceTimeline()].sort(
-			(a, b) => a.seq - b.seq,
-		);
+		// Every timeline event carries its witness attribution, placed right
+		// after the type so receipts read "who said what" in one glance.
+		const timeline = [...this.timelineEvents, ...this.evidenceTimeline()]
+			.sort((a, b) => a.seq - b.seq)
+			.map(({ seq, at, type, ...detail }) => ({
+				seq,
+				at,
+				type,
+				witness: witnessForTimelineType(type),
+				...detail,
+			}));
 		const editOutcomes = this.edits.map((edit) => ({
 			editId: edit.id,
 			environments: Object.fromEntries(
@@ -184,6 +200,18 @@ export class BoxRecorder {
 		const restorationFailed = this.edits.some((edit) =>
 			edit.files.some((file) => file.restored === false),
 		);
+		const witnesses = computeBoxWitnesses({
+			timeline: timeline as WitnessTimelineEvent[],
+			editOutcomes: editOutcomes.map((outcome, index) => ({
+				editId: outcome.editId,
+				at: this.edits[index]?.at ?? '',
+				environments: outcome.environments,
+			})),
+			pagesVisited: this.pages.length,
+			devServerStarted: this.vite.serverUrl !== null,
+			builds: this.builds.length,
+			previews: this.previews.length,
+		});
 		return {
 			name: meta.name,
 			tags: [...meta.tags],
@@ -235,6 +263,7 @@ export class BoxRecorder {
 			captures: this.captures,
 			notes: this.notes,
 			measurements: this.measurements,
+			witnesses,
 			timeline,
 			startedAt: this.startedAt,
 			finishedAt: this.finishedAt,
@@ -250,6 +279,8 @@ export class BoxRecorder {
 				previews: this.previews.length,
 				pages: this.pages.length,
 				restorationFailed,
+				witnesses: summarizeWitnessVerdicts(witnesses),
+				contested: isContestedBox(meta.status, witnesses),
 			},
 		};
 	}

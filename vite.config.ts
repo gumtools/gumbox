@@ -18,9 +18,7 @@ export default {
 		clean: true,
 		// tsdown cannot auto-derive externals without package.json
 		// dependencies; pack.deps.neverBundle crashes for the same reason.
-		// playwright-core is an optional lazy import (browser-host) and must
-		// stay external: bundling its CJS breaks on __dirname at runtime.
-		external: ['mitt', 'mlly', 'pathe', 'playwright-core', 'tinyglobby', 'vite'],
+		external: ['mitt', 'pathe', 'tinyglobby', 'vite'],
 	},
 	test: {
 		environment: 'node',

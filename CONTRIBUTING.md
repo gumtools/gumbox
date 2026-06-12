@@ -11,7 +11,7 @@ on all three.
 
 The repo runs on Deno — no Node/npm/pnpm setup, `deno.json` is the whole manifest.
 
-1. Install Deno: <https://docs.deno.com/runtime/getting-started/installation/>
+1. Install Deno: <https://docs.deno.com/runtime/getting_started/installation/>
 2. `deno install` — Deno fetches the npm dependencies for you
 3. `deno task dev` — the test suite in watch mode, your main feedback loop
 
@@ -23,8 +23,10 @@ The repo runs on Deno — no Node/npm/pnpm setup, `deno.json` is the whole manif
 | `deno task fmt`   | fix formatting when `check` complains  |
 | `deno task build` | bundle to `dist/` (what consumers run) |
 
-Browser-dependent tests use your installed Chrome/Edge via `playwright-core` and skip
-automatically on machines without one — nothing to download.
+Browser-dependent tests drive your installed Chrome/Edge/Chromium over the Chrome
+DevTools Protocol and skip automatically on machines without one — nothing to download.
+Set `GUMBOX_BROWSER_PATH` to pin a specific executable (see "Bring your own browser" in
+the README for the full discovery order).
 
 ## How a box run works
 
@@ -80,20 +82,20 @@ How one box run flows through `src/`:
   <img src="./assets/contrib-code-map.svg" alt="cli → discovery.ts → runner.ts, fanning out to project.ts, build.ts/preview.ts, and browser.ts, converging into evidence.ts → expect.ts → receipt.ts" width="860" />
 </p>
 
-| Place                            | Owns                                                                           |
-| -------------------------------- | ------------------------------------------------------------------------------ |
-| `specs/`                         | **product truth** — behavior changes start (or end) here                       |
-| `src/box.ts`, `src/discovery.ts` | the `box()` function; finding `*.box.ts` files and deriving names              |
-| `src/runner.ts`                  | one box run: the six-key context, lifecycle, guaranteed file restoration       |
-| `src/project.ts`                 | file edits with diffs and restore                                              |
-| `src/build.ts`, `src/preview.ts` | `pipeline.build()` / `pipeline.preview()`                                      |
-| `src/browser.ts`                 | page evidence (console, network, navigations, screenshots)                     |
-| `src/evidence.ts`                | taps Vite's hot channel and `hotUpdate` hook, classifies each reaction         |
-| `src/expect.ts`                  | the assertion surface (`expect.edit`, `expect.page.outcome`, ...)              |
-| `src/receipt.ts`                 | assembles and writes receipts                                                  |
-| `src/cli/`                       | the `gumbox` CLI and the host boundary (argv, fs, signals, colors, playwright) |
-| `test/fixtures/`                 | small real Vite apps — their box files are executable documentation            |
-| `test/*.test.ts`                 | copy a fixture to a temp dir, run boxes for real, assert on the receipt JSON   |
+| Place                            | Owns                                                                         |
+| -------------------------------- | ---------------------------------------------------------------------------- |
+| `specs/`                         | **product truth** — behavior changes start (or end) here                     |
+| `src/box.ts`, `src/discovery.ts` | the `box()` function; finding `*.box.ts` files and deriving names            |
+| `src/runner.ts`                  | one box run: the six-key context, lifecycle, guaranteed file restoration     |
+| `src/project.ts`                 | file edits with diffs and restore                                            |
+| `src/build.ts`, `src/preview.ts` | `pipeline.build()` / `pipeline.preview()`                                    |
+| `src/browser.ts`                 | page evidence (console, network, navigations, screenshots)                   |
+| `src/evidence.ts`                | taps Vite's hot channel and `hotUpdate` hook, classifies each reaction       |
+| `src/expect.ts`                  | the assertion surface (`expect.edit`, `expect.page.outcome`, ...)            |
+| `src/receipt.ts`                 | assembles and writes receipts                                                |
+| `src/cli/`                       | the `gumbox` CLI and the host boundary (argv, fs, signals, colors, browser)  |
+| `test/fixtures/`                 | small real Vite apps — their box files are executable documentation          |
+| `test/*.test.ts`                 | copy a fixture to a temp dir, run boxes for real, assert on the receipt JSON |
 
 ## Making a change
 

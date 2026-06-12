@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<title>Gumbox isolation fixture</title>
+	</head>
+	<body>
+		<h1>Isolation probe</h1>
+		<div id="isolation-report"></div>
+		<script type="module">
+			// ?isolation=write plants origin state; ?isolation=read reports
+			// whether any of it is visible. Cookies on 127.0.0.1 ignore the
+			// port, localStorage is origin(port)-scoped — the boxes pin the dev
+			// server port so both detectors are meaningful.
+			const mode = new URLSearchParams(location.search).get('isolation');
+			const report = document.querySelector('#isolation-report');
+			if (mode === 'write') {
+				document.cookie = 'gumbox_isolation=box-a; path=/';
+				localStorage.setItem('gumbox-isolation', 'box-a');
+				const cookieStuck = document.cookie.includes('gumbox_isolation=box-a');
+				const storedValue = localStorage.getItem('gumbox-isolation');
+				report.textContent = `wrote cookie=${cookieStuck} storage=${storedValue}`;
+			} else {
+				const cookieLeaked = document.cookie.includes('gumbox_isolation');
+				const storageLeaked = localStorage.getItem('gumbox-isolation') !== null;
+				report.textContent =
+					cookieLeaked || storageLeaked
+						? `leaked cookie=${cookieLeaked} storage=${storageLeaked}`
+						: 'clean state';
+			}
+		</script>
+	</body>
+</html>

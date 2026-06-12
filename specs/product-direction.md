@@ -18,6 +18,10 @@ The user-facing product should also make visible UI states easy to browse:
 > A Gumbox state is a real app route or environment state, shown through the
 > user's Vite pipeline, with a receipt attached.
 
+A receipt reads as correlated testimony. The pipeline, the client, and the
+driver each witness the run from their own vantage point, and the receipt is
+the case file that lets anyone cross-examine the result.
+
 The authoring model should follow Vite 8:
 
 ```ts
@@ -416,6 +420,9 @@ SSR environment invalidated: false
 Browser reloaded before DOM reached expected state.
 Receipt written: .gumbox/receipts/...
 ```
+
+The failure reads as witness testimony, with each line attributable to the
+pipeline, the client, or the driver witness.
 
 This is the gap between browser automation and Vite internals. Playwright can
 observe the page. Vitest Browser Mode can execute browser tests. Gumbox should

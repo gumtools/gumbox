@@ -1,121 +1,103 @@
 /**
  * Host boundary for browser automation. This is the one place (besides the
- * test-support adapter that re-exports it) allowed to load a real automation
- * driver. playwright-core is imported lazily inside launch(), so projects
- * that never visit a browser environment never pay for (or need) it.
+ * test-support adapter that re-exports it) allowed to drive a real browser.
+ * gumbox owns the whole stack: per-OS discovery + process launch
+ * (`browser-launch.ts`), a JSON-RPC client over the global WebSocket
+ * (`cdp-client.ts`), and the CDP page adapter (`cdp-browser.ts`).
  *
- * No browser binary is downloaded at install time: launch tries the
- * playwright-managed Chromium first (when its cache exists) and falls back to
- * installed system browsers via playwright channels (Chrome, Edge).
+ * No browser binary is downloaded at install time: launch discovers an
+ * installed Chrome, Edge, or Chromium (or an explicit `GUMBOX_BROWSER_PATH`)
+ * and speaks the Chrome DevTools Protocol to it directly.
+ *
+ * The process is pooled: one launched browser per headless mode is shared
+ * across every `launch()` call, and each GumboxBrowserSession maps to an
+ * isolated CDP browser context (Target.createBrowserContext) instead of a
+ * fresh process — the same amortization playwright uses. The pooled process
+ * is never shut down by a session; `shutdownLiveBrowserSessions()` (run end,
+ * test afterAll, interrupt handler) owns its disposal.
  */
-import type {
-	BrowserLaunchOptions,
-	GumboxBrowser,
-	GumboxBrowserPage,
-	GumboxBrowserSession,
-} from '../browser.ts';
-import type { Browser, BrowserType, Page } from 'playwright-core';
+import type { BrowserLaunchOptions, GumboxBrowser, GumboxBrowserSession } from '../browser.ts';
+import { launchBrowserEndpoint } from './browser-launch.ts';
+import { connectCdpBrowser } from './cdp-browser.ts';
+import type { CdpBrowserConnection, LaunchedBrowserEndpoint } from './cdp-browser.ts';
 
-/** null = the playwright-managed default executable. */
-const LAUNCH_CHANNELS: ReadonlyArray<string | null> = [null, 'chrome', 'msedge'];
+type PoolEntry = {
+	endpoint: LaunchedBrowserEndpoint;
+	browser: CdpBrowserConnection;
+	/** Mutable so the connection-lost/process-exit callbacks can flag it. */
+	health: { isDead: boolean };
+};
 
-function errorMessage(error: unknown): string {
-	return error instanceof Error ? error.message.split('\n')[0]! : String(error);
-}
+/** Injectable process/connection factories so the pool is unit-testable. */
+export type CreateHostBrowserOptions = {
+	launchEndpoint?(options: { headless: boolean }): Promise<LaunchedBrowserEndpoint>;
+	connectBrowser?(
+		endpoint: LaunchedBrowserEndpoint,
+		options: { onConnectionLost(): void },
+	): Promise<CdpBrowserConnection>;
+};
 
-async function importChromium(): Promise<BrowserType> {
-	let playwright: { chromium: BrowserType };
-	try {
-		playwright = await import('playwright-core');
-	} catch (error) {
-		throw new Error(
-			`gumbox needs the optional 'playwright-core' package for browser visits, but it could not be loaded: ${errorMessage(error)}`,
-		);
-	}
-	return playwright.chromium;
-}
+export function createHostBrowser(options: CreateHostBrowserOptions = {}): GumboxBrowser {
+	const launchEndpoint = options.launchEndpoint ?? launchBrowserEndpoint;
+	const connectBrowser = options.connectBrowser ?? connectCdpBrowser;
+	// One pooled browser process per headless mode, keyed by the flag.
+	const pool = new Map<boolean, PoolEntry>();
 
-async function launchChromium(chromium: BrowserType, headless: boolean): Promise<Browser> {
-	const failures: string[] = [];
-	for (const channel of LAUNCH_CHANNELS) {
+	const spawnEntry = async (headless: boolean): Promise<PoolEntry> => {
+		const endpoint = await launchEndpoint({ headless });
+		const health = { isDead: false };
+		const markEntryDead = (): void => {
+			health.isDead = true;
+		};
+		// Either signal means the process is gone: the browser-level socket
+		// closing (crash, external kill) or the child process exiting.
+		void endpoint.exited?.then(markEntryDead);
 		try {
-			return await chromium.launch({
-				headless,
-				...(channel === null ? {} : { channel }),
-			});
+			const browser = await connectBrowser(endpoint, { onConnectionLost: markEntryDead });
+			return { endpoint, browser, health };
 		} catch (error) {
-			failures.push(`${channel ?? 'playwright chromium'}: ${errorMessage(error)}`);
+			await endpoint.shutdown().catch(() => undefined);
+			throw error;
 		}
-	}
-	throw new Error(
-		`gumbox could not launch a Chromium-family browser. Install one with ` +
-			`'npx playwright install chromium' or install Google Chrome / Microsoft Edge. ` +
-			`Attempts: ${failures.join(' | ')}`,
-	);
-}
-
-function adaptPage(page: Page): GumboxBrowserPage {
-	return {
-		goto: async (url) => {
-			await page.goto(url, { waitUntil: 'load' });
-		},
-		reload: async () => {
-			await page.reload({ waitUntil: 'load' });
-		},
-		content: () => page.content(),
-		screenshot: async (filePath) => {
-			await page.screenshot({ path: filePath });
-		},
-		evaluate: (expression) => page.evaluate(expression),
-		waitForExpression: async (expression, timeoutMs) => {
-			await page.waitForFunction(expression, undefined, { timeout: timeoutMs });
-		},
-		click: async (selector, timeoutMs) => {
-			await page.click(selector, { timeout: timeoutMs });
-		},
-		onConsoleMessage: (listener) => {
-			page.on('console', (message) => {
-				listener({ level: message.type(), text: message.text() });
-			});
-		},
-		onPageError: (listener) => {
-			page.on('pageerror', (error) => {
-				listener({ message: error.message });
-			});
-		},
-		onRequestFailed: (listener) => {
-			page.on('requestfailed', (request) => {
-				listener({
-					url: request.url(),
-					method: request.method(),
-					reason: request.failure()?.errorText ?? null,
-				});
-			});
-		},
-		onNavigated: (listener) => {
-			page.on('framenavigated', (frame) => {
-				if (frame === page.mainFrame()) {
-					listener(frame.url());
-				}
-			});
-		},
-		close: () => page.close(),
 	};
-}
 
-function adaptSession(browser: Browser): GumboxBrowserSession {
-	return {
-		newPage: async () => adaptPage(await browser.newPage()),
-		close: () => browser.close(),
+	const evictEntry = async (headless: boolean, entry: PoolEntry): Promise<void> => {
+		entry.health.isDead = true;
+		if (pool.get(headless) === entry) {
+			pool.delete(headless);
+		}
+		entry.browser.close();
+		// shutdown() is memoized in the launch boundary, so awaiting it here is
+		// safe even when the interrupt handler already started the same kill.
+		await entry.endpoint.shutdown().catch(() => undefined);
 	};
-}
 
-export function createHostBrowser(): GumboxBrowser {
+	const acquireLiveEntry = async (headless: boolean): Promise<PoolEntry> => {
+		const existing = pool.get(headless);
+		if (existing !== undefined && !existing.health.isDead) {
+			return existing;
+		}
+		if (existing !== undefined) {
+			await evictEntry(headless, existing);
+		}
+		const entry = await spawnEntry(headless);
+		pool.set(headless, entry);
+		return entry;
+	};
+
 	return {
 		name: 'chromium',
-		launch: async (options: BrowserLaunchOptions): Promise<GumboxBrowserSession> => {
-			const chromium = await importChromium();
-			return adaptSession(await launchChromium(chromium, options.headless));
+		launch: async (launchOptions: BrowserLaunchOptions): Promise<GumboxBrowserSession> => {
+			const entry = await acquireLiveEntry(launchOptions.headless);
+			try {
+				return await entry.browser.createContextSession();
+			} catch {
+				// A live-looking process that cannot mint a context is unusable:
+				// evict it and retry exactly once on a fresh process.
+				await evictEntry(launchOptions.headless, entry);
+				const freshEntry = await acquireLiveEntry(launchOptions.headless);
+				return freshEntry.browser.createContextSession();
+			}
 		},
 	};
 }

@@ -4,8 +4,9 @@ import type { GumboxFileSystem } from './filesystem.ts';
 /**
  * Browser automation is a host capability, exactly like the filesystem:
  * library code never imports an automation driver itself. Hosts (the CLI bin,
- * test support) adapt a real driver — playwright-core in this repo — into
- * this minimal surface and inject it into `runBoxes()`.
+ * test support) adapt a real driver — the owned CDP adapter at
+ * `src/cli/browser-host.ts` in this repo — into this minimal surface and
+ * inject it into `runBoxes()`.
  */
 export type GumboxBrowser = {
 	/** Driver/browser family name recorded in receipts, e.g. 'chromium'. */
@@ -173,8 +174,9 @@ export function getPageDriver(handle: PageHandle, context: string): PageDriver {
 export function missingBrowserCapabilityError(context: string): Error {
 	return new Error(
 		`${context} needs a browser automation capability, but none was injected. ` +
-			`Pass \`browser\` to runBoxes(...) — the gumbox CLI wires a playwright-core ` +
-			`adapter automatically when playwright and a Chromium-family browser are installed.`,
+			`Pass \`browser\` to runBoxes(...) — the gumbox CLI wires its own CDP adapter ` +
+			`automatically when an installed Chromium-family browser (Chrome, Edge, or ` +
+			`Chromium) is found, or when GUMBOX_BROWSER_PATH points at one.`,
 	);
 }
 

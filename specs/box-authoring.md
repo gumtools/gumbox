@@ -4,7 +4,7 @@
 
 The authoring API must be Vite Environment API-first.
 
-Gumbox may use browsers, Playwright, or framework adapters internally, but the
+Gumbox may use browsers, CDP automation, or framework adapters internally, but the
 public model should not be a thin browser test wrapper. The public model should
 read like:
 

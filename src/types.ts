@@ -1,6 +1,7 @@
 import type { InlineConfig, ViteDevServer } from 'vite';
 import type { GumboxBrowser, PageHandle } from './browser.ts';
 import type { GumboxFileSystem } from './filesystem.ts';
+import type { BoxWitnesses, WitnessId } from './witness.ts';
 
 /**
  * Options accepted by `box(options, run)`. The name is optional: anonymous
@@ -525,6 +526,8 @@ export type AssertionRecord = {
 	editId: string | null;
 	status: 'passed' | 'failed';
 	message: string | null;
+	/** The witness whose testimony the assertion examined; the recorder fills it. */
+	witness?: WitnessId;
 	/** Structured expectation for declarative assertions (`expect.edit`, `expect.page.outcome`). */
 	expected?: unknown;
 	/** What the evidence actually recorded, for failed declarative assertions. */
@@ -557,6 +560,10 @@ export type BoxRunResult = {
 	exportName: string;
 	status: 'passed' | 'failed';
 	error: { message: string; stack?: string } | null;
+	/** Per-witness testimony for the box (verdict, statement counts, statements against). */
+	witnesses: BoxWitnesses;
+	/** True when the box passed but a witness still spoke against the run. */
+	contested: boolean;
 };
 
 export type RunBoxesOptions = {

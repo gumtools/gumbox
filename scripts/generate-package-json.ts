@@ -10,10 +10,10 @@
  * an explicit host boundary. Run it with `deno task manifest`.
  *
  * Dependency posture: the manifest intentionally lists NO dependencies. The
- * dist build externalizes mitt/pathe/tinyglobby (+ lazy playwright-core),
- * and Node resolves those through gumbox's own node_modules (populated by
- * `deno install`) because module resolution follows the link's real path.
- * Only the vite peer range is declared, taken from deno.json imports.
+ * dist build externalizes mitt/pathe/tinyglobby, and Node resolves those
+ * through gumbox's own node_modules (populated by `deno install`) because
+ * module resolution follows the link's real path. Only the vite peer range
+ * is declared, taken from deno.json imports.
  */
 
 type DenoManifest = {
