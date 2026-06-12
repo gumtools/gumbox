@@ -63,12 +63,46 @@ Vite's own terms: what payload Vite sent, whether the server restarted, what the
 - Artifacts are right — manifest entries, no stale placeholders, no `node:fs` in worker bundles
 - A workflow stayed inside a performance budget
 
+## Every receipt has witnesses
+
+A box run is a case and the receipt is the case file. Every part of the pipeline that can
+observe something testifies: the **pipeline** witness (Vite's server side — what payloads it
+sent, whether it restarted), the **client** witness (what the page itself saw — console,
+errors, events), and the **driver** witness (what's only visible from outside the page —
+failed requests, navigations, screenshots). Each witness gets a verdict per box, and a passing
+box with a witness speaking against it is marked **contested**:
+
+```
+pass noisy page records console and network evidence  [pipeline+ client! driver!]  contested
+     client reported: 1 console error   driver reported: 1 failed request
+```
+
+Every assertion passed — and two witnesses still reported crimes. That's the gap between
+"tests pass" and "the app is fine", surfaced instead of swallowed. Drill into the testimony:
+
+```sh
+gumbox evidence 'noisy page'
+```
+
+```
+crimes reported (2):
+  ! console error   Failed to load resource: net::ERR_ABORTED       — reported by client
+  ! request failed  GET http://127.0.0.1:5173/missing.js            — reported by driver
+```
+
+Witness identity and verdicts live in the receipt JSON as plain machine-readable data — color
+is just how the terminal paints them.
+
 ## Why not Vitest / Playwright / Storybook?
 
 They're great at what they own — but they see the **page**, not the **pipeline** that produced
 it. That gap is how "all tests pass" and "the app is broken" happen at the same time. Gumbox
 owns the pipeline: the chain from an edit to a Vite environment event to what you see, with a
 receipt preserving the whole story.
+
+The browser side runs on an engine gumbox owns outright — raw Chrome DevTools Protocol over a
+WebSocket, zero dependencies, one pooled browser with an isolated context per box — and it is
+faster per test than playwright-core on every platform in CI.
 
 ## Bring your own browser
 
@@ -83,8 +117,8 @@ Protocol — no playwright dependency, no download at install time. Discovery or
    `%LOCALAPPDATA%\ms-playwright` on Windows) — full `chromium-<revision>` downloads only,
    newest first, the headless shell is skipped.
 
-macOS and Linux are exercised. Windows discovery paths exist but are unverified — when
-nothing is found, gumbox fails with the exact paths it checked.
+macOS, Linux, and Windows are all exercised in CI. When nothing is found, gumbox fails with
+the exact paths it checked.
 
 **Migrating from the playwright-core era?** Gumbox used to load `playwright-core` if it was
 present. Now it finds your browser directly, and if you only have playwright's downloaded
@@ -99,8 +133,9 @@ The website is being worked on at [gum.tools](https://gum.tools).
 
 ## Status
 
-Built in slices. Box authoring, dev/build/preview runs, browser evidence, the CLI, and JSON
-receipts work today. The state-gallery UI, generated types, and receipt replay are coming.
+Built in slices. Box authoring, dev/build/preview runs, browser evidence, witness verdicts
+with the `gumbox evidence` drill-down, the CLI, and JSON receipts work today. The
+state-gallery UI, generated types, and receipt replay are coming.
 
 ## Contributing
 
