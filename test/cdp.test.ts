@@ -863,6 +863,104 @@ describe('cdp browser connection (context = session)', () => {
 	});
 });
 
+/**
+ * Click-shaped harness: auto-responds to the page setup and actionability
+ * probe, but withholds every Input.dispatchMouseEvent response. Seeing the
+ * release frame on the wire while the press response is withheld proves the
+ * driver pipelines the pair instead of paying a round trip between them.
+ */
+function createStalledDispatchHarness() {
+	const sent: SentMessage[] = [];
+	const stalledDispatches: SentMessage[] = [];
+	const messageListeners: Array<(data: string) => void> = [];
+	const sendWaiters: Array<{ matches(message: SentMessage): boolean; notify(): void }> = [];
+	const deliver = (frame: Record<string, unknown>): void => {
+		const text = JSON.stringify(frame);
+		for (const listener of messageListeners) {
+			listener(text);
+		}
+	};
+	const respond = (message: SentMessage): Record<string, unknown> => {
+		if (message.method === 'Target.createBrowserContext') {
+			return { browserContextId: 'context-1' };
+		}
+		if (message.method === 'Target.createTarget') {
+			return { targetId: 'target-1' };
+		}
+		if (message.method === 'Target.attachToTarget') {
+			return { sessionId: 'session-1' };
+		}
+		if (message.method === 'Runtime.evaluate') {
+			// The actionability probe resolves an immediately clickable point.
+			return { result: { value: { x: 8, y: 9 } } };
+		}
+		return {};
+	};
+	const socket: CdpSocket = {
+		send: (data) => {
+			const message = JSON.parse(data) as SentMessage;
+			sent.push(message);
+			for (let index = sendWaiters.length - 1; index >= 0; index--) {
+				if (sendWaiters[index]!.matches(message)) {
+					sendWaiters[index]!.notify();
+					sendWaiters.splice(index, 1);
+				}
+			}
+			if (message.method === 'Input.dispatchMouseEvent') {
+				stalledDispatches.push(message);
+				return;
+			}
+			queueMicrotask(() => deliver({ id: message.id, result: respond(message) }));
+		},
+		close: () => undefined,
+		onMessage: (listener) => {
+			messageListeners.push(listener);
+		},
+		onClose: () => undefined,
+	};
+	const nextSend = (matches: (message: SentMessage) => boolean): Promise<void> => {
+		if (sent.some(matches)) {
+			return Promise.resolve();
+		}
+		return new Promise((notify) => sendWaiters.push({ matches, notify }));
+	};
+	const releaseStalledDispatches = (): void => {
+		for (const dispatch of stalledDispatches) {
+			deliver({ id: dispatch.id, result: {} });
+		}
+	};
+	return { socket, stalledDispatches, nextSend, releaseStalledDispatches };
+}
+
+describe('click input pipelining', () => {
+	test('release is sent without awaiting the press round trip', async () => {
+		const harness = createStalledDispatchHarness();
+		const { endpoint } = createFakeEndpoint();
+		const connection = await connectCdpBrowser(endpoint, {
+			openSocket: () => Promise.resolve(harness.socket),
+		});
+		const session = await connection.createContextSession();
+		const page = await session.newPage();
+
+		const clickDone = page.click('#counter', 1000);
+		await harness.nextSend(
+			(message) =>
+				message.method === 'Input.dispatchMouseEvent' &&
+				message.params?.type === 'mousePressed',
+		);
+		// One macrotask turn drains every microtask the driver could use; the
+		// press response stays withheld the whole time, so a release frame can
+		// only appear here if the driver never awaited the press round trip.
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		const dispatchedTypes = harness.stalledDispatches.map((message) => message.params?.type);
+		expect(dispatchedTypes).toEqual(['mousePressed', 'mouseReleased']);
+
+		harness.releaseStalledDispatches();
+		await clickDone;
+	});
+});
+
 type FakeBrowserProcess = {
 	endpoint: LaunchedBrowserEndpoint;
 	headless: boolean;

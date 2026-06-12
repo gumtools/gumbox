@@ -457,14 +457,18 @@ async function createCdpPage(wiring: CdpPageWiring): Promise<GumboxBrowserPage> 
 				button: 'left',
 				clickCount: 1,
 			};
-			await pageConnection.send('Input.dispatchMouseEvent', {
+			// Press and release are pipelined: CDP handles a session's commands
+			// in arrival order, so the release needs no round-trip wait behind
+			// the press. Promise.all still surfaces either command's failure.
+			const pressed = pageConnection.send('Input.dispatchMouseEvent', {
 				...mouseEvent,
 				type: 'mousePressed',
 			});
-			await pageConnection.send('Input.dispatchMouseEvent', {
+			const released = pageConnection.send('Input.dispatchMouseEvent', {
 				...mouseEvent,
 				type: 'mouseReleased',
 			});
+			await Promise.all([pressed, released]);
 		},
 		onConsoleMessage: (listener) => {
 			pageConnection.on('Runtime.consoleAPICalled', (params) => {
