@@ -5,10 +5,17 @@
  * browser-dependent suites skip (with a reason) on machines without any
  * launchable Chromium-family browser.
  */
-import { createHostBrowser } from '../../src/cli/browser-host.ts';
+import { afterAll } from 'vitest';
 import type { GumboxBrowser } from '../../src/browser.ts';
+import { createHostBrowser } from '../../src/cli/browser-host.ts';
+import { shutdownLiveBrowserSessions } from '../../src/cli/browser-launch.ts';
 
 export const hostBrowser: GumboxBrowser = createHostBrowser();
+
+// The pooled browser process deliberately outlives every session; dispose it
+// when the importing test file finishes so the suite exits on its own and no
+// gumbox-chromium process or temp profile leaks past the run.
+afterAll(() => shutdownLiveBrowserSessions());
 
 export type BrowserAvailability = { available: boolean; reason: string | null };
 

@@ -1,16 +1,20 @@
 import { describe, expect, test } from 'vitest';
+import type { GumboxBrowserSession } from '../src/browser.ts';
 import {
 	discoverBrowserExecutable,
 	knownBrowserExecutables,
 	playwrightCacheExecutables,
 } from '../src/cli/browser-discovery.ts';
+import { createHostBrowser } from '../src/cli/browser-host.ts';
 import {
 	buildInPageWaitExpression,
 	composePageContent,
+	connectCdpBrowser,
 	consoleArgumentText,
 	WAIT_TIMED_OUT_SENTINEL,
 	waitForInPagePredicate,
 } from '../src/cli/cdp-browser.ts';
+import type { CdpBrowserConnection, LaunchedBrowserEndpoint } from '../src/cli/cdp-browser.ts';
 import { createCdpConnection } from '../src/cli/cdp-client.ts';
 import type { CdpSocket } from '../src/cli/cdp-client.ts';
 
@@ -548,5 +552,283 @@ describe('page content composition', () => {
 
 	test('a document without a doctype serializes bare', () => {
 		expect(composePageContent({ doctype: null, html: '<html></html>' })).toBe('<html></html>');
+	});
+});
+
+/**
+ * Auto-responding CdpSocket: answers every command on a microtask via the
+ * given responder, so adapter code awaiting CDP replies runs to completion.
+ */
+function createAutoRespondingSocket(respond: (message: SentMessage) => Record<string, unknown>) {
+	const sent: SentMessage[] = [];
+	const messageListeners: Array<(data: string) => void> = [];
+	const closeListeners: Array<() => void> = [];
+	const socket: CdpSocket = {
+		send: (data) => {
+			const message = JSON.parse(data) as SentMessage;
+			sent.push(message);
+			queueMicrotask(() => {
+				const frame = JSON.stringify({ id: message.id, result: respond(message) });
+				for (const listener of messageListeners) {
+					listener(frame);
+				}
+			});
+		},
+		close: () => undefined,
+		onMessage: (listener) => {
+			messageListeners.push(listener);
+		},
+		onClose: (listener) => {
+			closeListeners.push(listener);
+		},
+	};
+	const loseConnection = (): void => {
+		for (const listener of closeListeners) {
+			listener();
+		}
+	};
+	return { socket, sent, loseConnection };
+}
+
+function createFakeEndpoint(name = 'fake') {
+	let shutdownCalls = 0;
+	const endpoint: LaunchedBrowserEndpoint = {
+		webSocketDebuggerUrl: `ws://127.0.0.1:9222/devtools/browser/${name}`,
+		writeBinaryFile: () => Promise.resolve(),
+		shutdown: () => {
+			shutdownCalls++;
+			return Promise.resolve();
+		},
+	};
+	return { endpoint, shutdownCount: () => shutdownCalls };
+}
+
+/** Browser-level + page-level fake sockets wired into connectCdpBrowser. */
+function createBrowserConnectionHarness() {
+	let contextCounter = 0;
+	let targetCounter = 0;
+	const browserSocket = createAutoRespondingSocket((message) => {
+		if (message.method === 'Target.createBrowserContext') {
+			contextCounter++;
+			return { browserContextId: `context-${contextCounter}` };
+		}
+		if (message.method === 'Target.createTarget') {
+			targetCounter++;
+			return { targetId: `target-${targetCounter}` };
+		}
+		return {};
+	});
+	const openSocket = (url: string): Promise<CdpSocket> => {
+		if (url.includes('/devtools/page/')) {
+			const pageSocket = createAutoRespondingSocket((message) => {
+				if (message.method === 'Page.getFrameTree') {
+					return { frameTree: { frame: { id: 'frame-1' } } };
+				}
+				return {};
+			});
+			return Promise.resolve(pageSocket.socket);
+		}
+		return Promise.resolve(browserSocket.socket);
+	};
+	return { browserSocket, openSocket };
+}
+
+describe('cdp browser connection (context = session)', () => {
+	test('each context session creates and disposes its own browser context', async () => {
+		const { browserSocket, openSocket } = createBrowserConnectionHarness();
+		const { endpoint, shutdownCount } = createFakeEndpoint();
+		const connection = await connectCdpBrowser(endpoint, { openSocket });
+
+		const first = await connection.createContextSession();
+		await connection.createContextSession();
+		const contextCreations = browserSocket.sent.filter(
+			(message) => message.method === 'Target.createBrowserContext',
+		);
+		expect(contextCreations).toHaveLength(2);
+
+		await first.close();
+		const contextDisposals = browserSocket.sent.filter(
+			(message) => message.method === 'Target.disposeBrowserContext',
+		);
+		expect(contextDisposals).toHaveLength(1);
+		expect(contextDisposals[0]!.params).toEqual({ browserContextId: 'context-1' });
+
+		// Closing a session never closes the shared browser or its process.
+		expect(browserSocket.sent.map((message) => message.method)).not.toContain('Browser.close');
+		expect(shutdownCount()).toBe(0);
+	});
+
+	test('newPage creates its target inside the session browser context', async () => {
+		const { browserSocket, openSocket } = createBrowserConnectionHarness();
+		const { endpoint } = createFakeEndpoint();
+		const connection = await connectCdpBrowser(endpoint, { openSocket });
+
+		const session = await connection.createContextSession();
+		await session.newPage();
+
+		const targetCreation = browserSocket.sent.find(
+			(message) => message.method === 'Target.createTarget',
+		);
+		expect(targetCreation?.params).toMatchObject({
+			url: 'about:blank',
+			browserContextId: 'context-1',
+		});
+	});
+
+	test('onConnectionLost fires when the browser socket closes', async () => {
+		const { browserSocket, openSocket } = createBrowserConnectionHarness();
+		const { endpoint } = createFakeEndpoint();
+		let connectionLost = false;
+		await connectCdpBrowser(endpoint, {
+			openSocket,
+			onConnectionLost: () => {
+				connectionLost = true;
+			},
+		});
+
+		browserSocket.loseConnection();
+		expect(connectionLost).toBe(true);
+	});
+});
+
+type FakeBrowserProcess = {
+	endpoint: LaunchedBrowserEndpoint;
+	headless: boolean;
+	shutdownCount(): number;
+	/** Simulates the browser-level socket closing (crash / external kill). */
+	loseConnection(): void;
+	contextsCreated: number;
+	contextsDisposed: number;
+};
+
+/**
+ * Fake endpoint + connection factories for the pool: every spawned process is
+ * recorded so tests can count spawns, shutdowns, and context lifecycles.
+ * `contextFailuresPerProcess[i]` makes process i reject that many
+ * createContextSession calls (Infinity = always), modeling a live-looking
+ * process that cannot mint a context.
+ */
+function createPoolHarness(options: { contextFailuresPerProcess?: number[] } = {}) {
+	const processes: FakeBrowserProcess[] = [];
+	const launchEndpoint = (launchOptions: {
+		headless: boolean;
+	}): Promise<LaunchedBrowserEndpoint> => {
+		const index = processes.length;
+		let shutdownCalls = 0;
+		const record: FakeBrowserProcess = {
+			endpoint: {
+				webSocketDebuggerUrl: `ws://127.0.0.1:9222/devtools/browser/${index}`,
+				writeBinaryFile: () => Promise.resolve(),
+				shutdown: () => {
+					shutdownCalls++;
+					return Promise.resolve();
+				},
+			},
+			headless: launchOptions.headless,
+			shutdownCount: () => shutdownCalls,
+			loseConnection: () => undefined,
+			contextsCreated: 0,
+			contextsDisposed: 0,
+		};
+		processes.push(record);
+		return Promise.resolve(record.endpoint);
+	};
+	const connectBrowser = (
+		endpoint: LaunchedBrowserEndpoint,
+		connectOptions: { onConnectionLost(): void },
+	): Promise<CdpBrowserConnection> => {
+		const record = processes.find((process) => process.endpoint === endpoint)!;
+		record.loseConnection = connectOptions.onConnectionLost;
+		let remainingFailures = options.contextFailuresPerProcess?.[processes.indexOf(record)] ?? 0;
+		return Promise.resolve({
+			createContextSession: (): Promise<GumboxBrowserSession> => {
+				if (remainingFailures > 0) {
+					remainingFailures--;
+					return Promise.reject(new Error('Target.createBrowserContext failed'));
+				}
+				record.contextsCreated++;
+				return Promise.resolve({
+					newPage: () => Promise.reject(new Error('newPage unused in pool tests')),
+					close: () => {
+						record.contextsDisposed++;
+						return Promise.resolve();
+					},
+				});
+			},
+			close: () => undefined,
+		});
+	};
+	return { processes, hooks: { launchEndpoint, connectBrowser } };
+}
+
+describe('host browser pool', () => {
+	test('two sequential launches share one browser process with separate contexts', async () => {
+		const { processes, hooks } = createPoolHarness();
+		const browser = createHostBrowser(hooks);
+
+		const first = await browser.launch({ headless: true });
+		await first.close();
+		const second = await browser.launch({ headless: true });
+		await second.close();
+
+		expect(processes).toHaveLength(1);
+		expect(processes[0]!.contextsCreated).toBe(2);
+		expect(processes[0]!.contextsDisposed).toBe(2);
+		// session.close() disposes the context; the pooled process stays alive.
+		expect(processes[0]!.shutdownCount()).toBe(0);
+	});
+
+	test('headed and headless launches pool separate processes', async () => {
+		const { processes, hooks } = createPoolHarness();
+		const browser = createHostBrowser(hooks);
+
+		await browser.launch({ headless: true });
+		await browser.launch({ headless: false });
+		await browser.launch({ headless: true });
+
+		expect(processes).toHaveLength(2);
+		expect(processes.map((process) => process.headless)).toEqual([true, false]);
+	});
+
+	test('a lost browser connection evicts the entry and the next launch respawns', async () => {
+		const { processes, hooks } = createPoolHarness();
+		const browser = createHostBrowser(hooks);
+
+		await browser.launch({ headless: true });
+		processes[0]!.loseConnection();
+		const session = await browser.launch({ headless: true });
+
+		expect(processes).toHaveLength(2);
+		// The dead process was shut down (memoized kill + profile removal).
+		expect(processes[0]!.shutdownCount()).toBe(1);
+		expect(processes[1]!.contextsCreated).toBe(1);
+		await session.close();
+	});
+
+	test('a context failure on a live-looking process retries exactly once on a fresh one', async () => {
+		const { processes, hooks } = createPoolHarness({
+			contextFailuresPerProcess: [Number.POSITIVE_INFINITY, 0],
+		});
+		const browser = createHostBrowser(hooks);
+
+		const session = await browser.launch({ headless: true });
+
+		expect(processes).toHaveLength(2);
+		expect(processes[0]!.shutdownCount()).toBe(1);
+		expect(processes[1]!.contextsCreated).toBe(1);
+		await session.close();
+	});
+
+	test('a second context failure after the retry surfaces instead of looping', async () => {
+		const { processes, hooks } = createPoolHarness({
+			contextFailuresPerProcess: [Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY],
+		});
+		const browser = createHostBrowser(hooks);
+
+		await expect(browser.launch({ headless: true })).rejects.toThrow(
+			'Target.createBrowserContext failed',
+		);
+		// Exactly one retry: no third process is ever spawned.
+		expect(processes).toHaveLength(2);
 	});
 });

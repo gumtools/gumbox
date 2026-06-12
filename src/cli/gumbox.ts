@@ -36,5 +36,8 @@ const exitCode = await runCli(getHostCommandLineArgs(), {
 	stderr: (line) => console.error(line),
 	colors: hostSupportsColor(),
 });
+// Pooled browser processes outlive every box on purpose; dispose them now
+// that the run is over (kill + temp profile removal).
+await shutdownLiveBrowserSessions();
 // Force the exit: fixture pipelines may leak open handles past server.close().
 await exitHost(exitCode);

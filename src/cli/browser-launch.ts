@@ -440,18 +440,22 @@ function platformLaunchFlags(platform: BrowserPlatform): string[] {
 }
 
 /**
- * Live browser shutdowns, registered at spawn and deregistered once their
- * own shutdown runs. An interrupted run never reaches the per-session
- * shutdown in the runner, which would orphan headless browsers and strand
- * `gumbox-chromium-*` profile dirs in the temp directory; the CLI host calls
- * shutdownLiveBrowserSessions() from its interrupt handler instead.
+ * Live browser shutdowns, registered at spawn and deregistered only once
+ * their own shutdown runs. Pooled browser processes outlive every
+ * GumboxBrowserSession (a session is a browser context, not a process), so an
+ * entry stays registered for the pool's whole lifetime — nothing deregisters
+ * per session. Without this registry an interrupted or finished run would
+ * orphan headless browsers and strand `gumbox-chromium-*` profile dirs in the
+ * temp directory.
  */
 const liveBrowserShutdowns = new Set<() => Promise<void>>();
 
 /**
- * Emergency cleanup for interrupted runs: kills every browser process still
- * alive and removes its temp profile dir. Safe to call at any time — sessions
- * that shut down normally are no longer registered.
+ * Disposes every pooled browser process still alive: kills it and removes its
+ * temp profile dir. This is the one disposal path for pooled browsers — the
+ * CLI calls it after the run resolves, the test support registers it in
+ * afterAll, and the interrupt handler calls it on Ctrl-C. Safe to call at any
+ * time and more than once (each shutdown is memoized).
  */
 export async function shutdownLiveBrowserSessions(): Promise<void> {
 	const pendingShutdowns: Array<Promise<void>> = [];
@@ -505,7 +509,12 @@ export async function launchBrowserEndpoint(options: {
 
 	try {
 		const webSocketDebuggerUrl = await resolveDevToolsEndpoint(child, profileDir);
-		return { webSocketDebuggerUrl, writeBinaryFile, shutdown };
+		return {
+			webSocketDebuggerUrl,
+			writeBinaryFile,
+			shutdown,
+			exited: child.exited.catch(() => undefined),
+		};
 	} catch (error) {
 		await shutdown();
 		throw error;

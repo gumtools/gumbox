@@ -608,4 +608,45 @@ describe.skipIf(!availability.available)('gumbox browser evidence', () => {
 		},
 		TEST_TIMEOUT_MS,
 	);
+
+	test(
+		'two boxes in one run share a browser process but never browser state',
+		async () => {
+			// Isolation proof for the pooled browser: box A plants a cookie
+			// (host-scoped on 127.0.0.1, so port-agnostic) AND localStorage on a
+			// pinned dev-server port; box B, on the same origin in the same run,
+			// must see neither. If pooled boxes shared a browser context, the
+			// read box would observe the cookie and the storage value and its
+			// 'clean state' assertion would fail.
+			const root = await createFixtureProject();
+			const boxes = await selectBoxes(
+				root,
+				'isolation: first box plants cookie and storage state',
+				'isolation: second box sees none of the first box state',
+			);
+			const result = await runBoxes({ root, boxes, fileSystem, browser: hostBrowser });
+
+			expect(
+				result.status,
+				result.boxes.map((entry) => entry.error?.message).join('\n'),
+			).toBe('passed');
+
+			const receipt = await readReceipt(result.receiptPath);
+			expect(receipt.boxes).toHaveLength(2);
+			// The write demonstrably landed before the clean read, so the clean
+			// read cannot be vacuous.
+			expect(receipt.boxes[0]!.status).toBe('passed');
+			expect(receipt.boxes[1]!.status).toBe('passed');
+			// Both boxes ran against the same pinned origin.
+			expect(receipt.boxes[0]!.pages[0]!.url).toContain(':14173');
+			expect(receipt.boxes[1]!.pages[0]!.url).toContain(':14173');
+			// Each box still gets its own truthful session lifecycle events.
+			for (const boxReceipt of receipt.boxes) {
+				const timelineTypes = boxReceipt.timeline.map((event) => event.type);
+				expect(timelineTypes).toContain('browser session started');
+				expect(timelineTypes).toContain('browser session closed');
+			}
+		},
+		TEST_TIMEOUT_MS,
+	);
 });

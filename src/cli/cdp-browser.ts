@@ -7,7 +7,7 @@
  */
 import type { GumboxBrowserPage, GumboxBrowserSession } from '../browser.ts';
 import { createCdpConnection, openCdpSocket } from './cdp-client.ts';
-import type { CdpConnection } from './cdp-client.ts';
+import type { CdpConnection, CdpSocket } from './cdp-client.ts';
 
 /** A launched browser process, reachable over its DevTools endpoint. */
 export type LaunchedBrowserEndpoint = {
@@ -16,12 +16,12 @@ export type LaunchedBrowserEndpoint = {
 	writeBinaryFile(filePath: string, bytes: Uint8Array): Promise<void>;
 	/** Kills the browser process (best effort) and removes its temp profile. */
 	shutdown(): Promise<void>;
+	/** Resolves when the browser process exits, however it dies. */
+	exited?: Promise<void>;
 };
 
 /** Upper bound for a navigation to reach its load event. */
 const NAVIGATION_TIMEOUT_MS = 30_000;
-/** How long session.close() waits for a graceful Browser.close reply. */
-const BROWSER_CLOSE_GRACE_MS = 3_000;
 /** Coarse in-page re-check timer for frames where rAF is throttled or absent. */
 const WAIT_SAFETY_TICK_MS = 100;
 /** Host-side slack above the in-page deadline before declaring the page hung. */
@@ -514,40 +514,77 @@ async function createCdpPage(wiring: CdpPageWiring): Promise<GumboxBrowserPage> 
 	};
 }
 
-export async function connectCdpSession(
+/**
+ * A browser-level CDP connection that mints per-context sessions. One
+ * connection serves many GumboxBrowserSessions over the lifetime of the
+ * pooled browser process.
+ */
+export type CdpBrowserConnection = {
+	/**
+	 * Creates one isolated browsing state (cookies/storage/cache) and adapts
+	 * it as a GumboxBrowserSession. The browser context IS the session:
+	 * closing the session disposes the context only — the browser process
+	 * belongs to the pool and outlives every session.
+	 */
+	createContextSession(): Promise<GumboxBrowserSession>;
+	/** Closes the browser-level socket; the process is owned by `endpoint.shutdown()`. */
+	close(): void;
+};
+
+export type ConnectCdpBrowserOptions = {
+	/** Fires when the browser-level socket closes — process death included. */
+	onConnectionLost?(): void;
+	/** Injectable transport for unit tests; defaults to the real WebSocket. */
+	openSocket?(url: string): Promise<CdpSocket>;
+};
+
+export async function connectCdpBrowser(
 	endpoint: LaunchedBrowserEndpoint,
-): Promise<GumboxBrowserSession> {
-	const browserConnection = createCdpConnection(
-		await openCdpSocket(endpoint.webSocketDebuggerUrl),
-	);
+	options: ConnectCdpBrowserOptions = {},
+): Promise<CdpBrowserConnection> {
+	const openSocket = options.openSocket ?? openCdpSocket;
+	const browserSocket = await openSocket(endpoint.webSocketDebuggerUrl);
+	if (options.onConnectionLost !== undefined) {
+		browserSocket.onClose(options.onConnectionLost);
+	}
+	const browserConnection = createCdpConnection(browserSocket);
 	// Page targets attach on sibling WebSocket paths of the browser endpoint.
 	const endpointHost = new URL(endpoint.webSocketDebuggerUrl).host;
 
+	const createContextSession = async (): Promise<GumboxBrowserSession> => {
+		const created = await browserConnection.send('Target.createBrowserContext');
+		const browserContextId = created.browserContextId as string;
+		return {
+			newPage: async () => {
+				const target = await browserConnection.send('Target.createTarget', {
+					url: 'about:blank',
+					browserContextId,
+				});
+				const targetId = target.targetId as string;
+				const pageConnection = createCdpConnection(
+					await openSocket(`ws://${endpointHost}/devtools/page/${targetId}`),
+				);
+				return createCdpPage({
+					pageConnection,
+					browserConnection,
+					targetId,
+					writeBinaryFile: endpoint.writeBinaryFile,
+				});
+			},
+			close: async () => {
+				// Disposing the context wipes this session's cookies/storage and
+				// closes its remaining targets. Never Browser.close and never
+				// endpoint.shutdown() here — the process is shared by the pool
+				// and only the pool (or the interrupt handler) may end it.
+				await browserConnection.send('Target.disposeBrowserContext', {
+					browserContextId,
+				});
+			},
+		};
+	};
+
 	return {
-		newPage: async () => {
-			const created = await browserConnection.send('Target.createTarget', {
-				url: 'about:blank',
-			});
-			const targetId = created.targetId as string;
-			const pageConnection = createCdpConnection(
-				await openCdpSocket(`ws://${endpointHost}/devtools/page/${targetId}`),
-			);
-			return createCdpPage({
-				pageConnection,
-				browserConnection,
-				targetId,
-				writeBinaryFile: endpoint.writeBinaryFile,
-			});
-		},
-		close: async () => {
-			// Graceful first so Chrome flushes its profile; the race keeps a
-			// wedged browser from hanging the run — shutdown() kills it anyway.
-			await Promise.race([
-				browserConnection.send('Browser.close').catch(() => undefined),
-				delay(BROWSER_CLOSE_GRACE_MS),
-			]);
-			browserConnection.close();
-			await endpoint.shutdown();
-		},
+		createContextSession,
+		close: () => browserConnection.close(),
 	};
 }
